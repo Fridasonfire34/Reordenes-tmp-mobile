@@ -413,6 +413,7 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
               <Text style={[styles.th, styles.colMaquina]}>Maquina</Text>
               <Text style={[styles.th, styles.colCantidad]}>Cantidad</Text>
               <Text style={[styles.th, styles.colComentarios]}>Comentarios</Text>
+              <Text style={[styles.th, styles.colFechaHora]}>Fecha y Hora</Text>
             </View>
             <ScrollView style={styles.rowsScroll}>
               {filteredRows.map((row, index) => (
@@ -438,6 +439,7 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
                   <Text style={[styles.td, styles.colMaquina]}>{row.maquina || '-'}</Text>
                   <Text style={[styles.td, styles.colCantidad]}>{row.cantidad || '-'}</Text>
                   <Text style={[styles.td, styles.colComentarios]}>{row.comentarios || '-'}</Text>
+                  <Text style={[styles.td, styles.colFechaHora]}>{row.fecha || '-'}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -623,6 +625,7 @@ const styles = StyleSheet.create({
   colMaquina: { width: 130 },
   colCantidad: { width: 90 },
   colComentarios: { width: 260 },
+  colFechaHora: { width: 150 },
   printButton: {
     marginTop: 40,
     height: 52,
