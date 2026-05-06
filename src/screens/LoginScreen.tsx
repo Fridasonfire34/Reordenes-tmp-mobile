@@ -12,10 +12,11 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { API_ENDPOINTS } from '../config/api';
 
 const BRAND_BLUE = '#1400FF';
-const LOGIN_URL = 'http://192.168.16.224:4000/api/mobile/signing/login';
-const RECOVERY_URL = 'http://192.168.16.224:4000/api/mobile/signing/recover';
+const LOGIN_URL = API_ENDPOINTS.login;
+const RECOVERY_URL = API_ENDPOINTS.recoveryBase;
 
 type LoginScreenProps = {
   onLoginSuccess?: (loggedUser: string) => void;

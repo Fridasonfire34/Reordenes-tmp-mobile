@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { API_ENDPOINTS, DYMO_ENDPOINTS } from '../config/api';
 
 type ConsultarReordenesScreenProps = {
   onBack: () => void;
@@ -45,8 +46,8 @@ type PrintLabelData = {
 
 const TARGET_STATUS = 'Pendiente por Programacion';
 
-const GET_REORDENES_URL = 'http://192.168.16.224:4000/api/mobile/reorders';
-const DYMO_PRINT_API_URL = 'http://192.168.16.224:3011/api/rdm/print';
+const GET_REORDENES_URL = API_ENDPOINTS.reorders;
+const DYMO_PRINT_API_URL = DYMO_ENDPOINTS.print;
 const DYMO_LABEL_PRESET = '100x212';
 
 const toText = (value: unknown): string => (value == null ? '' : String(value).trim());

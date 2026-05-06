@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Alert,
   Image,
   SafeAreaView,
   StyleSheet,
@@ -15,12 +14,15 @@ type MenuScreenProps = {
   userName: string;
   onNuevaReorden: () => void;
   onConsultarReordenes: () => void;
+  onRDMs: () => void;
 };
 
-export default function MenuScreen({ userName, onNuevaReorden, onConsultarReordenes }: MenuScreenProps) {
-  const handlePress = (option: string) => {
-    Alert.alert('Próximamente', `Abrir: ${option}`);
-  };
+export default function MenuScreen({
+  userName,
+  onNuevaReorden,
+  onConsultarReordenes,
+  onRDMs,
+}: MenuScreenProps) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -53,7 +55,7 @@ export default function MenuScreen({ userName, onNuevaReorden, onConsultarReorde
 
           <TouchableOpacity
             style={[styles.menuButton, styles.buttonTertiary]}
-            onPress={() => handlePress('RDMs')}
+            onPress={onRDMs}
           >
             <Text style={styles.menuEmoji}>📦</Text>
             <View style={styles.menuButtonContent}>

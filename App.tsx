@@ -4,6 +4,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import MenuScreen from './src/screens/MenuScreen';
 import NuevaReordenScreen from './src/screens/NuevaReordenScreen';
 import ConsultarReordenesScreen from './src/screens/ConsultarReordenesScreen';
+import RDMsScreen from './src/screens/RDMsScreen';
 
 async function requestCameraPermissionOnLaunch() {
   if (Platform.OS !== 'android') {
@@ -40,7 +41,7 @@ async function requestCameraPermissionOnLaunch() {
 
 function App() {
   const [currentScreen, setCurrentScreen] = useState<
-    'login' | 'menu' | 'new-order' | 'consultar-reordenes'
+    'login' | 'menu' | 'new-order' | 'consultar-reordenes' | 'rdms'
   >('login');
   const [loggedUser, setLoggedUser] = useState('Usuario');
 
@@ -63,9 +64,15 @@ function App() {
           userName={loggedUser}
           onNuevaReorden={() => setCurrentScreen('new-order')}
           onConsultarReordenes={() => setCurrentScreen('consultar-reordenes')}
+          onRDMs={() => setCurrentScreen('rdms')}
         />
       ) : currentScreen === 'new-order' ? (
         <NuevaReordenScreen onBack={() => setCurrentScreen('menu')} />
+      ) : currentScreen === 'rdms' ? (
+        <RDMsScreen
+          onBack={() => setCurrentScreen('menu')}
+          loggedUser={loggedUser}
+        />
       ) : (
         <ConsultarReordenesScreen onBack={() => setCurrentScreen('menu')} />
       )}

@@ -1,5 +1,19 @@
 This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
 
+## Configuracion de servidor (.env)
+
+La app usa variables de entorno para conectarse al backend y al bridge de impresion.
+
+1. Crea o edita `.env` en la raiz del proyecto.
+2. Usa este formato:
+
+```env
+API_BASE_URL=http://TU_IP_O_DOMINIO:4000
+DYMO_BASE_URL=http://TU_IP_O_DOMINIO:3011
+```
+
+3. Reinicia Metro despues de cualquier cambio en `.env`.
+
 # Getting Started
 
 > **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.

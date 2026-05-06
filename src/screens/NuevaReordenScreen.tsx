@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { API_ENDPOINTS, DYMO_ENDPOINTS } from '../config/api';
 
 type NuevaReordenScreenProps = {
   onBack: () => void;
@@ -55,19 +56,17 @@ const escapeHtml = (value: string): string =>
 
 const normalizePartValue = (value: string): string => value.trim().toUpperCase();
 
-const NEW_FOLIO_URL = 'http://192.168.16.224:4000/api/mobile/nuevoFolioReorden';
-const GET_LINEAS_URL = 'http://192.168.16.224:4000/api/mobile/getLineas';
-const GET_AREAS_URL = 'http://192.168.16.224:4000/api/mobile/getArea';
-const GET_SUB_AREAS_URL = 'http://192.168.16.224:4000/api/mobile/getSubArea';
-const GET_MAQUINAS_URL = 'http://192.168.16.224:4000/api/mobile/getMaquinas';
-const GET_DEFECTOS_URL = 'http://192.168.16.224:4000/api/mobile/getDefectos';
-const GET_CAUSAS_URL = 'http://192.168.16.224:4000/api/mobile/getCausas';
-const GET_NUMERO_PARTE_URL = 'http://192.168.16.224:4000/api/mobile/getNumeroParte';
-const GET_COMPONENTES_URL = 'http://192.168.16.224:4000/api/mobile/getComponentes';
-const SAVE_REORDEN_URLS = [
-  'http://192.168.16.224:4000/api/mobile/saveReorder',
-];
-const DYMO_PRINT_API_URL = 'http://192.168.16.224:3011/api/rdm/print';
+const NEW_FOLIO_URL = API_ENDPOINTS.newFolio;
+const GET_LINEAS_URL = API_ENDPOINTS.lineas;
+const GET_AREAS_URL = API_ENDPOINTS.areas;
+const GET_SUB_AREAS_URL = API_ENDPOINTS.subAreas;
+const GET_MAQUINAS_URL = API_ENDPOINTS.maquinas;
+const GET_DEFECTOS_URL = API_ENDPOINTS.defectos;
+const GET_CAUSAS_URL = API_ENDPOINTS.causas;
+const GET_NUMERO_PARTE_URL = API_ENDPOINTS.numeroParte;
+const GET_COMPONENTES_URL = API_ENDPOINTS.componentes;
+const SAVE_REORDEN_URLS = [API_ENDPOINTS.saveReorder];
+const DYMO_PRINT_API_URL = DYMO_ENDPOINTS.print;
 const DYMO_LABEL_PRESET = '100x212';
 
 function CheckOption({
@@ -1357,6 +1356,7 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
 const styles = StyleSheet.create({
   /* ── Contenedor principal ── */
   safeArea: {
+    marginTop: 20,
     flex: 1,
     backgroundColor: '#F0F4FA',
   },
