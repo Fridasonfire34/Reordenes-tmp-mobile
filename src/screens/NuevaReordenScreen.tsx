@@ -224,6 +224,17 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [printLabelData, setPrintLabelData] = useState<PrintLabelData | null>(null);
   const [previewHtml, setPreviewHtml] = useState('');
+  const [showPlantaPicker, setShowPlantaPicker] = useState(false);
+  const [showMaterialPicker, setShowMaterialPicker] = useState(false);
+  const [showLineaPicker, setShowLineaPicker] = useState(false);
+  const [showAreaPicker, setShowAreaPicker] = useState(false);
+  const [showSubAreaPicker, setShowSubAreaPicker] = useState(false);
+  const [showDefectoPicker, setShowDefectoPicker] = useState(false);
+  const [showCausaPicker, setShowCausaPicker] = useState(false);
+  const [showMaquinaPicker, setShowMaquinaPicker] = useState(false);
+  const [showTipoReordenPicker, setShowTipoReordenPicker] = useState(false);
+  const [showComponentePicker, setShowComponentePicker] = useState(false);
+  const [showTurnoPicker, setShowTurnoPicker] = useState(false);
 
   const nowText = useMemo(() => {
     const now = new Date();
@@ -880,6 +891,45 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
     setKanban(option === 'kanban' ? nextChecked : false);
   };
 
+  const renderPickerModal = ({
+    visible,
+    onClose,
+    title,
+    options,
+    onSelect,
+  }: {
+    visible: boolean;
+    onClose: () => void;
+    title: string;
+    options: OptionItem[];
+    onSelect: (option: OptionItem) => void | Promise<void>;
+  }) => (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.pickerModalOverlay}>
+        <View style={styles.pickerModalCard}>
+          <Text style={styles.pickerModalTitle}>{title}</Text>
+          <ScrollView style={styles.pickerModalList} keyboardShouldPersistTaps="handled">
+            {options.map((option, index) => (
+              <TouchableOpacity
+                key={`${option.value}-${index}`}
+                style={styles.pickerModalOption}
+                activeOpacity={0.8}
+                onPress={() => {
+                  void Promise.resolve(onSelect(option)).finally(onClose);
+                }}
+              >
+                <Text style={styles.pickerModalOptionText}>{option.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <TouchableOpacity style={styles.pickerModalCancelButton} activeOpacity={0.8} onPress={onClose}>
+            <Text style={styles.pickerModalCancelText}>Cancelar</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
@@ -899,6 +949,7 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
             <Text style={styles.backButtonText}>← Volver</Text>
           </TouchableOpacity>
         </View>
+        <Text style={styles.requiredFieldsNotice}>Los campos con * son obligatorios</Text>
 
         {/* ── Tarjeta: Información general ── */}
         <View style={[styles.card, { zIndex: 50 }]}>
@@ -916,13 +967,14 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
           <View style={styles.plantaNoReprocessRow}>
             <View style={styles.firstRowRight}>
               <Text style={styles.label}>Planta *</Text>
-              <SelectPlaceholder
-                text={planta || 'Selecciona una planta'}
-                options={plantOptions}
-                isOpen={openDropdown === 'planta'}
-                onToggle={() => toggleDropdown('planta')}
-                onSelect={handleSelectPlanta}
-              />
+              <TouchableOpacity style={styles.input} onPress={() => setShowPlantaPicker(true)} activeOpacity={0.8}>
+                <View style={styles.selectRow}>
+                  <Text style={planta ? styles.selectText : styles.selectPlaceholderText}>
+                    {planta || 'Selecciona una planta'}
+                  </Text>
+                  <Text style={styles.selectArrow}>▾</Text>
+                </View>
+              </TouchableOpacity>
             </View>
             <View style={styles.checkAligned}>
               <CheckOption
@@ -1026,24 +1078,25 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
               </View>
               <View style={styles.halfField}>
                 <Text style={styles.label}>Material</Text>
-                <SelectPlaceholder
-                  text={
-                    numeroParteRows.length > 0
-                      ? selectedMaterial || 'Selecciona una fila en la tabla'
-                      : selectedMaterial || 'Selecciona material'
-                  }
-                  options={materialOptions}
-                  isOpen={openDropdown === 'material'}
-                  onToggle={numeroParteRows.length === 0 ? () => toggleDropdown('material') : undefined}
-                  onSelect={
-                    numeroParteRows.length === 0
-                      ? opt => {
-                          setSelectedMaterial(opt.value);
-                          setOpenDropdown(null);
-                        }
-                      : undefined
-                  }
-                />
+                <TouchableOpacity
+                  style={[styles.input, numeroParteRows.length > 0 && styles.disabledInput]}
+                  onPress={() => {
+                    if (numeroParteRows.length === 0) {
+                      setShowMaterialPicker(true);
+                    }
+                  }}
+                  activeOpacity={numeroParteRows.length === 0 ? 0.8 : 1}
+                  disabled={numeroParteRows.length > 0}
+                >
+                  <View style={styles.selectRow}>
+                    <Text style={selectedMaterial ? styles.selectText : styles.selectPlaceholderText}>
+                      {numeroParteRows.length > 0
+                        ? selectedMaterial || 'Selecciona una fila en la tabla'
+                        : selectedMaterial || 'Selecciona material'}
+                    </Text>
+                    <Text style={styles.selectArrow}>▾</Text>
+                  </View>
+                </TouchableOpacity>
               </View>
             </View>
             <View style={styles.row2}>
@@ -1134,121 +1187,109 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
           <View style={styles.row2}>
             <View style={styles.halfField}>
               <Text style={styles.label}>Línea *</Text>
-              <SelectPlaceholder
-                text={linea || 'Seleccionar'}
-                options={lineaOptions}
-                isOpen={openDropdown === 'linea'}
-                onToggle={() => toggleDropdown('linea')}
-                onSelect={option => {
-                  setLinea(option.label);
-                  setOpenDropdown(null);
-                }}
-              />
+              <TouchableOpacity style={styles.input} onPress={() => setShowLineaPicker(true)} activeOpacity={0.8}>
+                <View style={styles.selectRow}>
+                  <Text style={linea ? styles.selectText : styles.selectPlaceholderText}>
+                    {linea || 'Seleccionar'}
+                  </Text>
+                  <Text style={styles.selectArrow}>▾</Text>
+                </View>
+              </TouchableOpacity>
             </View>
             <View style={styles.halfField}>
               <Text style={styles.label}>Área *</Text>
-              <SelectPlaceholder
-                text={area || 'Seleccionar'}
-                options={areaOptions}
-                isOpen={openDropdown === 'area'}
-                onToggle={() => toggleDropdown('area')}
-                onSelect={handleAreaSelect}
-              />
+              <TouchableOpacity style={styles.input} onPress={() => setShowAreaPicker(true)} activeOpacity={0.8}>
+                <View style={styles.selectRow}>
+                  <Text style={area ? styles.selectText : styles.selectPlaceholderText}>
+                    {area || 'Seleccionar'}
+                  </Text>
+                  <Text style={styles.selectArrow}>▾</Text>
+                </View>
+              </TouchableOpacity>
             </View>
           </View>
 
           <View style={styles.row2}>
             <View style={styles.halfField}>
               <Text style={styles.label}>Sub Área</Text>
-              <SelectPlaceholder
-                text={subArea || 'Seleccionar'}
-                options={subAreaOptions}
-                isOpen={openDropdown === 'subArea'}
-                onToggle={() => toggleDropdown('subArea')}
-                onSelect={option => {
-                  setSubArea(option.label);
-                  setOpenDropdown(null);
-                }}
-              />
+              <TouchableOpacity style={styles.input} onPress={() => setShowSubAreaPicker(true)} activeOpacity={0.8}>
+                <View style={styles.selectRow}>
+                  <Text style={subArea ? styles.selectText : styles.selectPlaceholderText}>
+                    {subArea || 'Seleccionar'}
+                  </Text>
+                  <Text style={styles.selectArrow}>▾</Text>
+                </View>
+              </TouchableOpacity>
             </View>
             <View style={styles.halfField}>
               <Text style={styles.label}>Defecto *</Text>
-              <SelectPlaceholder
-                text={defecto || 'Seleccionar'}
-                options={defectoOptions}
-                isOpen={openDropdown === 'defecto'}
-                onToggle={() => toggleDropdown('defecto')}
-                onSelect={handleDefectoSelect}
-              />
+              <TouchableOpacity style={styles.input} onPress={() => setShowDefectoPicker(true)} activeOpacity={0.8}>
+                <View style={styles.selectRow}>
+                  <Text style={defecto ? styles.selectText : styles.selectPlaceholderText}>
+                    {defecto || 'Seleccionar'}
+                  </Text>
+                  <Text style={styles.selectArrow}>▾</Text>
+                </View>
+              </TouchableOpacity>
             </View>
           </View>
 
           <View style={styles.row2}>
             <View style={styles.halfField}>
               <Text style={styles.label}>Causa *</Text>
-              <SelectPlaceholder
-                text={causa || 'Seleccionar'}
-                options={causaOptions}
-                isOpen={openDropdown === 'causa'}
-                onToggle={() => toggleDropdown('causa')}
-                onSelect={option => {
-                  setCausa(option.label);
-                  setOpenDropdown(null);
-                }}
-              />
+              <TouchableOpacity style={styles.input} onPress={() => setShowCausaPicker(true)} activeOpacity={0.8}>
+                <View style={styles.selectRow}>
+                  <Text style={causa ? styles.selectText : styles.selectPlaceholderText}>
+                    {causa || 'Seleccionar'}
+                  </Text>
+                  <Text style={styles.selectArrow}>▾</Text>
+                </View>
+              </TouchableOpacity>
             </View>
             <View style={styles.halfField}>
               <Text style={styles.label}>Máquina *</Text>
-              <SelectPlaceholder
-                text={maquina || 'Seleccionar'}
-                options={maquinaOptions}
-                isOpen={openDropdown === 'maquina'}
-                onToggle={() => toggleDropdown('maquina')}
-                onSelect={option => {
-                  setMaquina(option.label);
-                  setOpenDropdown(null);
-                }}
-              />
+              <TouchableOpacity style={styles.input} onPress={() => setShowMaquinaPicker(true)} activeOpacity={0.8}>
+                <View style={styles.selectRow}>
+                  <Text style={maquina ? styles.selectText : styles.selectPlaceholderText}>
+                    {maquina || 'Seleccionar'}
+                  </Text>
+                  <Text style={styles.selectArrow}>▾</Text>
+                </View>
+              </TouchableOpacity>
             </View>
           </View>
 
           <View style={styles.row2}>
             <View style={styles.halfField}>
-              <Text style={styles.label}>Tipo Reorden</Text>
-              <SelectPlaceholder
-                text={tipoReorden || 'Seleccionar tipo reorden'}
-                options={tipoReordenOptions}
-                isOpen={openDropdown === 'tipoReorden'}
-                onToggle={() => toggleDropdown('tipoReorden')}
-                onSelect={async option => {
-                  setTipoReorden(option.value);
-                  setOpenDropdown(null);
-                  if (option.value === 'Componente') {
-                    try {
-                      const opts = await fetchCatalogOptions(GET_COMPONENTES_URL);
-                      setComponenteOptions(opts);
-                    } catch {
-                      setComponenteOptions([]);
-                    }
-                  } else {
-                    setComponente('');
-                    setComponenteOptions([]);
-                  }
-                }}
-              />
+              <Text style={styles.label}>Tipo Reorden *</Text>
+              <TouchableOpacity style={styles.input} onPress={() => setShowTipoReordenPicker(true)} activeOpacity={0.8}>
+                <View style={styles.selectRow}>
+                  <Text style={tipoReorden ? styles.selectText : styles.selectPlaceholderText}>
+                    {tipoReorden || 'Seleccionar tipo reorden'}
+                  </Text>
+                  <Text style={styles.selectArrow}>▾</Text>
+                </View>
+              </TouchableOpacity>
             </View>
             <View style={styles.halfField}>
               <Text style={styles.label}>Componente</Text>
-              <SelectPlaceholder
-                text={componente || 'Seleccionar componente'}
-                options={tipoReorden === 'Componente' ? componenteOptions : undefined}
-                isOpen={tipoReorden === 'Componente' ? openDropdown === 'componente' : false}
-                onToggle={tipoReorden === 'Componente' ? () => toggleDropdown('componente') : undefined}
-                onSelect={tipoReorden === 'Componente' ? option => {
-                  setComponente(option.label);
-                  setOpenDropdown(null);
-                } : undefined}
-              />
+              <TouchableOpacity
+                style={[styles.input, tipoReorden !== 'Componente' && styles.disabledInput]}
+                onPress={() => {
+                  if (tipoReorden === 'Componente') {
+                    setShowComponentePicker(true);
+                  }
+                }}
+                activeOpacity={tipoReorden === 'Componente' ? 0.8 : 1}
+                disabled={tipoReorden !== 'Componente'}
+              >
+                <View style={styles.selectRow}>
+                  <Text style={componente ? styles.selectText : styles.selectPlaceholderText}>
+                    {componente || 'Seleccionar componente'}
+                  </Text>
+                  <Text style={styles.selectArrow}>▾</Text>
+                </View>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -1272,16 +1313,14 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
           <View style={styles.row2}>
             <View style={styles.halfField}>
               <Text style={styles.label}>Turno *</Text>
-              <SelectPlaceholder
-                text={turno || 'Seleccionar'}
-                options={turnoOptions}
-                isOpen={openDropdown === 'turno'}
-                onToggle={() => toggleDropdown('turno')}
-                onSelect={option => {
-                  setTurno(option.label);
-                  setOpenDropdown(null);
-                }}
-              />
+              <TouchableOpacity style={styles.input} onPress={() => setShowTurnoPicker(true)} activeOpacity={0.8}>
+                <View style={styles.selectRow}>
+                  <Text style={turno ? styles.selectText : styles.selectPlaceholderText}>
+                    {turno || 'Seleccionar'}
+                  </Text>
+                  <Text style={styles.selectArrow}>▾</Text>
+                </View>
+              </TouchableOpacity>
             </View>
             <View style={styles.halfField}>
               <Text style={styles.label}>Empleado *</Text>
@@ -1309,6 +1348,127 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
         </TouchableOpacity>
 
       </ScrollView>
+
+      {renderPickerModal({
+        visible: showPlantaPicker,
+        onClose: () => setShowPlantaPicker(false),
+        title: 'Selecciona planta',
+        options: plantOptions,
+        onSelect: option => {
+          handleSelectPlanta(option);
+        },
+      })}
+
+      {renderPickerModal({
+        visible: showMaterialPicker,
+        onClose: () => setShowMaterialPicker(false),
+        title: 'Selecciona material',
+        options: materialOptions,
+        onSelect: option => {
+          setSelectedMaterial(option.value);
+        },
+      })}
+
+      {renderPickerModal({
+        visible: showLineaPicker,
+        onClose: () => setShowLineaPicker(false),
+        title: 'Selecciona línea',
+        options: lineaOptions,
+        onSelect: option => {
+          setLinea(option.label);
+        },
+      })}
+
+      {renderPickerModal({
+        visible: showAreaPicker,
+        onClose: () => setShowAreaPicker(false),
+        title: 'Selecciona área',
+        options: areaOptions,
+        onSelect: option => {
+          handleAreaSelect(option);
+        },
+      })}
+
+      {renderPickerModal({
+        visible: showSubAreaPicker,
+        onClose: () => setShowSubAreaPicker(false),
+        title: 'Selecciona sub área',
+        options: subAreaOptions,
+        onSelect: option => {
+          setSubArea(option.label);
+        },
+      })}
+
+      {renderPickerModal({
+        visible: showDefectoPicker,
+        onClose: () => setShowDefectoPicker(false),
+        title: 'Selecciona defecto',
+        options: defectoOptions,
+        onSelect: option => {
+          handleDefectoSelect(option);
+        },
+      })}
+
+      {renderPickerModal({
+        visible: showCausaPicker,
+        onClose: () => setShowCausaPicker(false),
+        title: 'Selecciona causa',
+        options: causaOptions,
+        onSelect: option => {
+          setCausa(option.label);
+        },
+      })}
+
+      {renderPickerModal({
+        visible: showMaquinaPicker,
+        onClose: () => setShowMaquinaPicker(false),
+        title: 'Selecciona máquina',
+        options: maquinaOptions,
+        onSelect: option => {
+          setMaquina(option.label);
+        },
+      })}
+
+      {renderPickerModal({
+        visible: showTipoReordenPicker,
+        onClose: () => setShowTipoReordenPicker(false),
+        title: 'Selecciona tipo reorden',
+        options: tipoReordenOptions,
+        onSelect: async option => {
+          setTipoReorden(option.value);
+          if (option.value === 'Componente') {
+            try {
+              const opts = await fetchCatalogOptions(GET_COMPONENTES_URL);
+              setComponenteOptions(opts);
+            } catch {
+              setComponenteOptions([]);
+            }
+          } else {
+            setComponente('');
+            setComponenteOptions([]);
+          }
+        },
+      })}
+
+      {renderPickerModal({
+        visible: showComponentePicker && tipoReorden === 'Componente',
+        onClose: () => setShowComponentePicker(false),
+        title: 'Selecciona componente',
+        options: componenteOptions,
+        onSelect: option => {
+          setComponente(option.label);
+        },
+      })}
+
+      {renderPickerModal({
+        visible: showTurnoPicker,
+        onClose: () => setShowTurnoPicker(false),
+        title: 'Selecciona turno',
+        options: turnoOptions,
+        onSelect: option => {
+          setTurno(option.label);
+        },
+      })}
 
       {/* ── Modal vista previa de impresión ── */}
       <Modal
@@ -1385,6 +1545,13 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: '800',
     color: '#1A49D8',
+  },
+  requiredFieldsNotice: {
+    fontSize: 11,
+    color: '#C53030',
+    fontWeight: '600',
+    marginTop: -8,
+    marginBottom: 12,
   },
   backButton: {
     backgroundColor: '#FFFFFF',
@@ -1499,6 +1666,16 @@ const styles = StyleSheet.create({
     color: '#1A2230',
     fontSize: 15,
     flex: 1,
+  },
+  selectPlaceholderText: {
+    color: '#A0AEC0',
+    fontSize: 15,
+    flex: 1,
+  },
+  selectRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   selectArrow: {
     color: '#718096',
@@ -1714,6 +1891,59 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+  },
+  pickerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(16, 32, 51, 0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  pickerModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 20,
+    maxHeight: '70%',
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  pickerModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1A49D8',
+    marginBottom: 12,
+  },
+  pickerModalList: {
+    maxHeight: 280,
+  },
+  pickerModalOption: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#D8E0EB',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  pickerModalOptionText: {
+    color: '#102033',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  pickerModalCancelButton: {
+    marginTop: 8,
+    alignSelf: 'flex-end',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  pickerModalCancelText: {
+    color: '#2D3748',
+    fontSize: 14,
+    fontWeight: '600',
   },
   webView: {
     flex: 1,

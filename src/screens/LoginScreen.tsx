@@ -18,12 +18,26 @@ const BRAND_BLUE = '#1400FF';
 const LOGIN_URL = API_ENDPOINTS.login;
 const RECOVERY_URL = API_ENDPOINTS.recoveryBase;
 
+const getLoginUrls = (): string[] => {
+  try {
+    const parsed = new URL(LOGIN_URL);
+    const preferredHosts = ['192.168.16.224', '10.0.2.2', '127.0.0.1'];
+    const hostsToTry = [...preferredHosts.filter(host => host !== parsed.hostname), parsed.hostname];
+    const portSegment = parsed.port ? `:${parsed.port}` : '';
+    const pathAndQuery = `${parsed.pathname}${parsed.search}`;
+
+    return hostsToTry.map(host => `${parsed.protocol}//${host}${portSegment}${pathAndQuery}`);
+  } catch {
+    return [LOGIN_URL];
+  }
+};
+
 type LoginScreenProps = {
-  onLoginSuccess?: (loggedUser: string) => void;
+  onLoginSuccess?: (payload: { name: string; nomina: string }) => void;
 };
 
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
-  const [email, setEmail] = useState('');
+  const [nomina, setNomina] = useState('');
   const [password, setPassword] = useState('');
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -37,6 +51,10 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [screenMode, setScreenMode] = useState<
     'login' | 'forgot-password' | 'verify-code' | 'new-password'
   >('login');
+
+  const handleNominaChange = (value: string) => {
+    setNomina(value.replace(/\D/g, ''));
+  };
 
   const handleSendRecoveryCode = async () => {
     if (!recoveryEmail.trim()) {
@@ -152,36 +170,63 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   };
 
   const handleLogin = async () => {
-    if (!email.trim() || !password) {
-      console.error('Login validation error: correo o contraseña vacios');
-      Alert.alert('Datos incompletos', 'Ingresa correo y contraseña.');
+    if (!nomina.trim() || !password) {
+      console.error('Login validation error: nomina o contraseña vacias');
+      Alert.alert('Datos incompletos', 'Ingresa numero de nomina y contraseña.');
+      return;
+    }
+
+    if (!/^\d+$/.test(nomina.trim())) {
+      Alert.alert('Nómina inválida', 'La nómina debe contener solo números.');
       return;
     }
 
     try {
       setIsSubmitting(true);
 
-      const response = await fetch(LOGIN_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          correo: email.trim(),
-          contrasena: password,
-        }),
-      });
+      const loginUrls = getLoginUrls();
+      let response: Response | null = null;
+      let data: any = null;
+      let usedUrl = LOGIN_URL;
+      let lastNetworkError: unknown = null;
 
-      const contentType = response.headers.get('content-type') || '';
-      const data = contentType.includes('application/json')
-        ? await response.json()
-        : await response.text();
+      for (const url of loginUrls) {
+        try {
+          const currentResponse = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              nomina: nomina.trim(),
+              contrasena: password,
+            }),
+          });
+
+          const contentType = currentResponse.headers.get('content-type') || '';
+          const currentData = contentType.includes('application/json')
+            ? await currentResponse.json()
+            : await currentResponse.text();
+
+          response = currentResponse;
+          data = currentData;
+          usedUrl = url;
+          break;
+        } catch (error) {
+          lastNetworkError = error;
+          console.warn('Login network fallback failed:', { url, error });
+        }
+      }
+
+      if (!response) {
+        throw new Error(`No se pudo conectar a ningun host. Probados: ${loginUrls.join(', ')}`);
+      }
 
       if (!response.ok) {
         const errorMessage =
           typeof data === 'string' ? data : data?.message || 'No fue posible iniciar sesión.';
         console.error('Login HTTP error:', {
-          url: LOGIN_URL,
+          url: usedUrl,
           status: response.status,
           statusText: response.statusText,
           body: data,
@@ -201,9 +246,22 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             data?.username ||
             'Usuario'
           : 'Usuario';
-      onLoginSuccess?.(loggedUser);
+
+      const loggedNomina =
+        typeof data === 'object' && data
+          ? String(
+              data?.user?.nomina ??
+                data?.usuario?.nomina ??
+                data?.nomina ??
+                nomina.trim(),
+            )
+          : nomina.trim();
+
+      onLoginSuccess?.({ name: loggedUser, nomina: loggedNomina });
     } catch (error) {
-      Alert.alert('Error de red', 'No se pudo conectar con el servidor.');
+      const networkMessage =
+        error instanceof Error ? error.message : 'No se pudo conectar con el servidor.';
+      Alert.alert('Error de red', networkMessage);
       console.error('Login network error:', error);
     } finally {
       setIsSubmitting(false);
@@ -211,7 +269,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   };
 
   const handleForgotPassword = () => {
-    setRecoveryEmail(email.trim());
+    setRecoveryEmail('');
     setScreenMode('forgot-password');
   };
 
@@ -242,12 +300,12 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             <View style={styles.formCard}>
               <Text style={styles.formTitle}>Iniciar sesión</Text>
 
-              <Text style={styles.label}>Correo</Text>
+              <Text style={styles.label}>Numero de nomina</Text>
               <TextInput
                 style={styles.input}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
+                value={nomina}
+                onChangeText={handleNominaChange}
+                keyboardType="number-pad"
                 autoCapitalize="none"
                 autoCorrect={false}
                 placeholderTextColor="#B0B0B0"

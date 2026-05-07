@@ -19,6 +19,7 @@ export const API_ENDPOINTS = {
   numeroParte: `${MOBILE_API_BASE}/getNumeroParte`,
   componentes: `${MOBILE_API_BASE}/getComponentes`,
   saveReorder: `${MOBILE_API_BASE}/saveReorder`,
+  saveRDM: `${MOBILE_API_BASE}/saveRDM`,
   newRdmFolio: `${MOBILE_API_BASE}/nuevoFolioRdm`,
 };
 
