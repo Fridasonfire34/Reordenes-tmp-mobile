@@ -105,11 +105,20 @@ function App() {
           }}
         />
       ) : currentScreen === 'rdms-view' ? (
-        <ConsultarRDMsScreen onBack={() => setCurrentScreen('rdms-menu')} />
+        <ConsultarRDMsScreen
+          onBack={() => setCurrentScreen('rdms-menu')}
+          loggedUser={loggedUser}
+          loggedNomina={loggedNomina}
+        />
       ) : currentScreen === 'rdms-fotos' ? (
         <FotosRDMScreen
           folio={rdmFolioForPhotos}
           onBack={() => setCurrentScreen('rdms-new')}
+          onSaved={() => {
+            setRdmDraft(null);
+            setRdmFolioForPhotos('');
+            setCurrentScreen('rdms-menu');
+          }}
         />
       ) : (
         <ConsultarReordenesScreen onBack={() => setCurrentScreen('menu')} />

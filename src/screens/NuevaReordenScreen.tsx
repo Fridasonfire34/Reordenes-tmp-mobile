@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { API_ENDPOINTS, DYMO_ENDPOINTS } from '../config/api';
+import { formatLocalDateTimeForSql } from '../utils/dateTime';
 
 type NuevaReordenScreenProps = {
   onBack: () => void;
@@ -236,7 +237,7 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
   const [showComponentePicker, setShowComponentePicker] = useState(false);
   const [showTurnoPicker, setShowTurnoPicker] = useState(false);
 
-  const nowText = useMemo(() => {
+  const nowDateTime = useMemo(() => {
     const now = new Date();
     const dd = `${now.getDate()}`.padStart(2, '0');
     const mm = `${now.getMonth() + 1}`.padStart(2, '0');
@@ -244,7 +245,10 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
     const hh = `${now.getHours()}`.padStart(2, '0');
     const min = `${now.getMinutes()}`.padStart(2, '0');
     const ss = `${now.getSeconds()}`.padStart(2, '0');
-    return `${dd}/${mm}/${yy} ${hh}:${min}:${ss}`;
+    return {
+      display: `${dd}/${mm}/${yy} ${hh}:${min}:${ss}`,
+      sql: formatLocalDateTimeForSql(now),
+    };
   }, []);
 
   const materialOptions = useMemo(() => {
@@ -638,7 +642,7 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
         empleado,
         comentarios,
         noReprocesar,
-        captureDateTime: nowText,
+        captureDateTime: nowDateTime.sql,
         numerosParteSelectedId: selectedRow?.id ?? null,
         noMatchFound: numeroParteNoMatch,
       };
@@ -961,7 +965,7 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
             </View>
             <View style={styles.halfField}>
               <Text style={styles.label}>Fecha y Hora</Text>
-              <TextInput style={[styles.input, styles.disabledInput]} value={nowText} editable={false} />
+              <TextInput style={[styles.input, styles.disabledInput]} value={nowDateTime.display} editable={false} />
             </View>
           </View>
           <View style={styles.plantaNoReprocessRow}>
@@ -1834,6 +1838,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 10,
     elevation: 5,
+    marginBottom: 30,
   },
   saveButtonText: {
     color: '#FFFFFF',

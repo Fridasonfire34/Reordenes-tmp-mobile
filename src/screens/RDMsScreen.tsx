@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Modal,
-  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -11,8 +10,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { API_ENDPOINTS } from '../config/api';
+import { toSqlDateTimeFromDisplay } from '../utils/dateTime';
 
 type RDMsScreenProps = {
   onBack: () => void;
@@ -37,15 +36,17 @@ type FormState = {
   disposicion: string;
   status: string;
   aplicacionDesviacion: string;
-  numeroWafloRma: string;
-  nc: string;
 };
 
 type FormKey = keyof FormState;
 
+type MaterialCatalogItem = {
+  codigo: string;
+  descripcion: string;
+};
+
 export type RdmDraft = {
   form: FormState;
-  salidaDateIso: string;
 };
 
 const formatCurrentDateTime = (): string => {
@@ -63,14 +64,57 @@ const formatCurrentDateTime = (): string => {
   return `${day}/${month}/${year} ${hours}:${minutes} ${amPm}`;
 };
 
-const formatDateOnly = (date: Date): string => {
-  const day = `${date.getDate()}`.padStart(2, '0');
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const year = `${date.getFullYear()}`;
-  return `${day}/${month}/${year}`;
+const SAVE_RDM_URL = API_ENDPOINTS.saveRDM;
+const RDM_ROLLOS_MATL_URL = API_ENDPOINTS.rdmRollosMatl;
+
+const getStringFromKeys = (source: Record<string, unknown>, keys: string[]): string => {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return '';
 };
 
-const SAVE_RDM_URL = API_ENDPOINTS.saveRDM;
+const normalizeMaterialCatalog = (payload: unknown): MaterialCatalogItem[] => {
+  const rows = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === 'object' && Array.isArray((payload as { data?: unknown[] }).data)
+      ? (payload as { data: unknown[] }).data
+      : payload && typeof payload === 'object' && Array.isArray((payload as { results?: unknown[] }).results)
+        ? (payload as { results: unknown[] }).results
+        : payload && typeof payload === 'object' && Array.isArray((payload as { items?: unknown[] }).items)
+          ? (payload as { items: unknown[] }).items
+          : [];
+
+  const uniqueByPair = new Set<string>();
+  const normalized: MaterialCatalogItem[] = [];
+
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') {
+      continue;
+    }
+
+    const source = row as Record<string, unknown>;
+    const codigo = getStringFromKeys(source, ['Codigo', 'codigo', 'CODIGO']);
+    const descripcion = getStringFromKeys(source, ['Descripcion', 'descripcion', 'DESCRIPCION']);
+
+    if (!codigo || !descripcion) {
+      continue;
+    }
+
+    const pairKey = `${codigo}__${descripcion}`;
+    if (uniqueByPair.has(pairKey)) {
+      continue;
+    }
+
+    uniqueByPair.add(pairKey);
+    normalized.push({ codigo, descripcion });
+  }
+
+  return normalized;
+};
 
 export default function RDMsScreen({
   onBack,
@@ -89,20 +133,14 @@ export default function RDMsScreen({
   const disposicionOptions = ['Desviacion', 'Devolucion', 'SCRAP', 'Retrabajo'];
 
   const [isLoadingFolio, setIsLoadingFolio] = useState(false);
-  const [showSalidaDatePicker, setShowSalidaDatePicker] = useState(false);
+  const [isLoadingMaterialCatalog, setIsLoadingMaterialCatalog] = useState(false);
+  const [materialCatalog, setMaterialCatalog] = useState<MaterialCatalogItem[]>([]);
+  const [showCodigoMaterialPicker, setShowCodigoMaterialPicker] = useState(false);
   const [showProveedorPicker, setShowProveedorPicker] = useState(false);
+  const [showDescripcionPicker, setShowDescripcionPicker] = useState(false);
   const [showDisposicionPicker, setShowDisposicionPicker] = useState(false);
   const [showPhotoOrSaveModal, setShowPhotoOrSaveModal] = useState(false);
   const [isSavingRdm, setIsSavingRdm] = useState(false);
-  const [salidaDate, setSalidaDate] = useState<Date>(() => {
-    if (initialDraft?.salidaDateIso) {
-      const parsed = new Date(initialDraft.salidaDateIso);
-      if (!Number.isNaN(parsed.getTime())) {
-        return parsed;
-      }
-    }
-    return new Date();
-  });
 
   const [form, setForm] = useState<FormState>(() => {
     if (initialDraft?.form) {
@@ -123,14 +161,35 @@ export default function RDMsScreen({
       disposicion: '',
       status: '',
       aplicacionDesviacion: formatCurrentDateTime(),
-      numeroWafloRma: '',
-      nc: '',
     };
   });
 
   const updateField = (key: FormKey, value: string) => {
     const normalizedValue = key === 'cantidad' ? value.replace(/\D/g, '') : value;
     setForm(prev => ({ ...prev, [key]: normalizedValue }));
+  };
+
+  const codigoMaterialOptions = Array.from(new Set(materialCatalog.map(item => item.codigo)));
+  const descripcionOptions = Array.from(new Set(materialCatalog.map(item => item.descripcion)));
+
+  const handleSelectCodigoMaterial = (codigo: string) => {
+    const match = materialCatalog.find(item => item.codigo === codigo);
+    setForm(prev => ({
+      ...prev,
+      codigoMaterial: codigo,
+      material: match ? match.descripcion : prev.material,
+    }));
+    setShowCodigoMaterialPicker(false);
+  };
+
+  const handleSelectDescripcion = (descripcion: string) => {
+    const match = materialCatalog.find(item => item.descripcion === descripcion);
+    setForm(prev => ({
+      ...prev,
+      material: descripcion,
+      codigoMaterial: match ? match.codigo : prev.codigoMaterial,
+    }));
+    setShowDescripcionPicker(false);
   };
 
   const missingRequiredFields = [
@@ -145,18 +204,6 @@ export default function RDMsScreen({
   const isMainActionDisabled =
     isLoadingFolio || isSavingRdm || !form.folio.trim() || missingRequiredFields.length > 0;
 
-  const handleSalidaDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowSalidaDatePicker(false);
-    }
-
-    if (event.type === 'dismissed' || !selectedDate) {
-      return;
-    }
-
-    setSalidaDate(selectedDate);
-  };
-
   useEffect(() => {
     setForm(prev => ({ ...prev, auditor: loggedNomina || loggedUser || 'Usuario' }));
   }, [loggedNomina, loggedUser]);
@@ -164,9 +211,8 @@ export default function RDMsScreen({
   useEffect(() => {
     onDraftChange({
       form,
-      salidaDateIso: salidaDate.toISOString(),
     });
-  }, [form, salidaDate, onDraftChange]);
+  }, [form, onDraftChange]);
 
   useEffect(() => {
     const fetchRdmFolio = async () => {
@@ -214,15 +260,121 @@ export default function RDMsScreen({
     void fetchRdmFolio();
   }, [form.folio]);
 
+  useEffect(() => {
+    const fetchMaterialCatalog = async () => {
+      setIsLoadingMaterialCatalog(true);
+      try {
+        const response = await fetch(RDM_ROLLOS_MATL_URL, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        const payload = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          const message =
+            payload && typeof payload === 'object' && 'message' in payload && typeof payload.message === 'string'
+              ? payload.message
+              : 'No fue posible cargar codigos y descripciones.';
+          throw new Error(message);
+        }
+
+        const catalog = normalizeMaterialCatalog(payload);
+
+        if (catalog.length === 0) {
+          throw new Error('El backend no devolvio catalogo de materiales valido.');
+        }
+
+        setMaterialCatalog(catalog);
+      } catch (error) {
+        Alert.alert(
+          'Catalogo no disponible',
+          error instanceof Error ? error.message : 'No fue posible cargar codigos y descripciones.',
+        );
+      } finally {
+        setIsLoadingMaterialCatalog(false);
+      }
+    };
+
+    void fetchMaterialCatalog();
+  }, []);
+
+  const generateAndStorePdfForRdm = async (pdfInput: {
+    folio: string;
+    auditor: string;
+    fecha: string;
+    codigoMaterial: string;
+    descripcion: string;
+    numeroTag: string;
+    proveedor: string;
+    cantidad: string;
+    unidad: string;
+    rechazo: string;
+    disposicion: string;
+    status: string;
+    salidaFecha: string;
+  }): Promise<'saved' | 'exists'> => {
+    const rawFolio = (pdfInput.folio || '').trim();
+    if (!rawFolio) {
+      throw new Error('No se encontro el folio para generar el PDF.');
+    }
+
+    const generateResponse = await fetch(API_ENDPOINTS.generateRdmReport, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folio: rawFolio,
+        reportData: {
+          fecha: pdfInput.fecha,
+          auditor: pdfInput.auditor,
+          codigoMaterial: pdfInput.codigoMaterial,
+          descripcion: pdfInput.descripcion,
+          numeroTag: pdfInput.numeroTag,
+          proveedor: pdfInput.proveedor,
+          cantidad: pdfInput.cantidad,
+          unidad: pdfInput.unidad,
+          rechazo: pdfInput.rechazo,
+          disposicion: pdfInput.disposicion,
+          status: pdfInput.status,
+          salidaFecha: pdfInput.salidaFecha,
+        },
+      }),
+    });
+
+    if (generateResponse.ok) {
+      return 'saved';
+    }
+
+    if (generateResponse.status === 409) {
+      return 'exists';
+    }
+
+    const generatePayload = await generateResponse.json().catch(() => null) as { message?: string } | null;
+    const message = generatePayload?.message || `Error ${generateResponse.status} al generar reporte en backend.`;
+
+    if (/existe|existente|duplicado|duplicate/i.test(message)) {
+      return 'exists';
+    }
+
+    throw new Error(message);
+  };
+
   const saveRdm = async (showSuccessAlert: boolean): Promise<boolean> => {
     if (isSavingRdm) {
+      return false;
+    }
+
+    const sqlFecha = toSqlDateTimeFromDisplay(form.fecha);
+
+    if (!sqlFecha) {
+      Alert.alert('Fecha invalida', 'No se pudo convertir la fecha del RDM a un formato valido para guardarlo.');
       return false;
     }
 
     const payload = {
       folio: form.folio,
       auditor: form.auditor,
-      fecha: form.fecha,
+      fecha: sqlFecha,
       codigoMaterial: form.codigoMaterial,
       descripcion: form.material,
       material: form.material,
@@ -234,10 +386,10 @@ export default function RDMsScreen({
       disposicion: form.disposicion,
       status: form.status,
       aplicacionDesviacion: form.aplicacionDesviacion,
-      salidaFecha: formatDateOnly(salidaDate),
-      wfloRm: form.numeroWafloRma,
-      nc: form.nc,
-      captureDateTime: form.fecha,
+      salidaFecha: '',
+      wfloRm: '',
+      nc: '',
+      captureDateTime: sqlFecha,
     };
 
     try {
@@ -266,8 +418,39 @@ export default function RDMsScreen({
         throw new Error(serverMessage);
       }
 
+      let pdfStatus: 'saved' | 'exists' = 'saved';
+      try {
+        pdfStatus = await generateAndStorePdfForRdm({
+          folio: payload.folio,
+          auditor: payload.auditor,
+          fecha: payload.fecha,
+          codigoMaterial: payload.codigoMaterial,
+          descripcion: payload.descripcion,
+          numeroTag: payload.numeroTag,
+          proveedor: payload.proveedor,
+          cantidad: payload.cantidad,
+          unidad: payload.unidad,
+          rechazo: payload.rechazo,
+          disposicion: payload.disposicion,
+          status: payload.status,
+          salidaFecha: payload.salidaFecha,
+        });
+      } catch (pdfError) {
+        Alert.alert(
+          'RDM guardado con advertencia',
+          pdfError instanceof Error
+            ? `El RDM se guardo, pero no fue posible guardar el PDF en BD: ${pdfError.message}`
+            : 'El RDM se guardo, pero no fue posible guardar el PDF en BD.',
+        );
+      }
+
       if (showSuccessAlert) {
-        Alert.alert('Guardado', 'El RDM se envio correctamente al backend.');
+        Alert.alert(
+          'Guardado',
+          pdfStatus === 'exists'
+            ? 'El RDM se guardo correctamente. El PDF ya existia para este folio y no se genero uno nuevo.'
+            : 'El RDM se guardo correctamente y el PDF se almaceno en la BD.',
+        );
       }
 
       return true;
@@ -310,7 +493,10 @@ export default function RDMsScreen({
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.title}>Nuevo Reporte de RDM</Text>
+          <View>
+            <Text style={styles.headerSub}>Nuevo reporte de</Text>
+            <Text style={styles.title}>RDM</Text>
+          </View>
           <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.85}>
             <Text style={styles.backButtonText}>← Volver</Text>
           </TouchableOpacity>
@@ -344,25 +530,37 @@ export default function RDMsScreen({
 
               <View style={styles.halfField}>
                 <Text style={styles.fieldLabel}>Codigo de material</Text>
-                <TextInput
+                <TouchableOpacity
                   style={styles.input}
-                  value={form.codigoMaterial}
-                  onChangeText={text => updateField('codigoMaterial', text)}
-                  editable={!isLoadingFolio}
-                  placeholderTextColor="#9AA6B2"
-                />
+                  onPress={() => setShowCodigoMaterialPicker(true)}
+                  activeOpacity={0.8}
+                  disabled={isLoadingFolio || isLoadingMaterialCatalog}
+                >
+                  <View style={styles.selectRow}>
+                    <Text style={form.codigoMaterial ? styles.selectText : styles.selectPlaceholderText}>
+                      {form.codigoMaterial || (isLoadingMaterialCatalog ? 'Cargando codigos...' : 'Selecciona codigo')}
+                    </Text>
+                    <Text style={styles.selectArrow}>▾</Text>
+                  </View>
+                </TouchableOpacity>
               </View>
             </View>
 
             <View style={styles.fieldBlock}>
               <Text style={styles.fieldLabel}>Descripcion</Text>
-              <TextInput
+              <TouchableOpacity
                 style={[styles.input, styles.inputMultiline]}
-                value={form.material}
-                onChangeText={text => updateField('material', text)}
-                editable={!isLoadingFolio}
-                placeholderTextColor="#9AA6B2"
-              />
+                onPress={() => setShowDescripcionPicker(true)}
+                activeOpacity={0.8}
+                disabled={isLoadingFolio || isLoadingMaterialCatalog}
+              >
+                <View style={styles.selectRow}>
+                  <Text style={form.material ? styles.selectText : styles.selectPlaceholderText}>
+                    {form.material || (isLoadingMaterialCatalog ? 'Cargando descripciones...' : 'Selecciona descripcion')}
+                  </Text>
+                  <Text style={styles.selectArrow}>▾</Text>
+                </View>
+              </TouchableOpacity>
             </View>
 
             <View style={styles.row2}>
@@ -479,61 +677,50 @@ export default function RDMsScreen({
             </View>
           </View>
 
-          <View style={styles.formCard}>
-            <Text style={styles.cardTitle}>Salida de Material</Text>
-            <Text style={styles.optionalHint}>Estos campos no son obligatorios.</Text>
-
-            <View style={styles.fieldBlock}>
-              <Text style={styles.fieldLabel}>Fecha</Text>
-              <TouchableOpacity style={styles.input} onPress={() => setShowSalidaDatePicker(true)} activeOpacity={0.8}>
-                <Text style={styles.dateText}>{formatDateOnly(salidaDate)}</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.row2}>
-              <View style={styles.halfField}>
-                <Text style={styles.fieldLabel}>Wflo / RM</Text>
-                <TextInput
-                  style={styles.input}
-                  value={form.numeroWafloRma}
-                  onChangeText={text => updateField('numeroWafloRma', text)}
-                  editable={!isLoadingFolio}
-                  placeholderTextColor="#9AA6B2"
-                />
-              </View>
-
-              <View style={styles.halfField}>
-                <Text style={styles.fieldLabel}>NC</Text>
-                <TextInput
-                  style={styles.input}
-                  value={form.nc}
-                  onChangeText={text => updateField('nc', text)}
-                  editable={!isLoadingFolio}
-                  placeholderTextColor="#9AA6B2"
-                />
-              </View>
-            </View>
-          </View>
-
           <TouchableOpacity
             style={[styles.addPhotosButton, isMainActionDisabled ? styles.addPhotosButtonDisabled : null]}
             activeOpacity={0.85}
             onPress={() => setShowPhotoOrSaveModal(true)}
             disabled={isMainActionDisabled}
           >
-            <Text style={styles.addPhotosButtonText}>Agregar fotografias o Guardar.</Text>
+            <Text style={styles.addPhotosButtonText}>Agregar fotografias o Guardar RDM</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
 
-      {showSalidaDatePicker ? (
-        <DateTimePicker
-          value={salidaDate}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={handleSalidaDateChange}
-        />
-      ) : null}
+      <Modal
+        visible={showCodigoMaterialPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCodigoMaterialPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Selecciona codigo de material</Text>
+
+            <ScrollView style={styles.modalList} keyboardShouldPersistTaps="handled">
+              {codigoMaterialOptions.map(option => (
+                <TouchableOpacity
+                  key={option}
+                  style={styles.modalOption}
+                  activeOpacity={0.8}
+                  onPress={() => handleSelectCodigoMaterial(option)}
+                >
+                  <Text style={styles.modalOptionText}>{option}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              activeOpacity={0.8}
+              onPress={() => setShowCodigoMaterialPicker(false)}
+            >
+              <Text style={styles.modalCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={showProveedorPicker}
@@ -565,6 +752,40 @@ export default function RDMsScreen({
               style={styles.modalCancelButton}
               activeOpacity={0.8}
               onPress={() => setShowProveedorPicker(false)}
+            >
+              <Text style={styles.modalCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showDescripcionPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDescripcionPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Selecciona descripcion</Text>
+
+            <ScrollView style={styles.modalList} keyboardShouldPersistTaps="handled">
+              {descripcionOptions.map(option => (
+                <TouchableOpacity
+                  key={option}
+                  style={styles.modalOption}
+                  activeOpacity={0.8}
+                  onPress={() => handleSelectDescripcion(option)}
+                >
+                  <Text style={styles.modalOptionText}>{option}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              activeOpacity={0.8}
+              onPress={() => setShowDescripcionPicker(false)}
             >
               <Text style={styles.modalCancelText}>Cancelar</Text>
             </TouchableOpacity>
@@ -661,7 +882,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 20,
+  },
+  headerSub: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#718096',
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginBottom: 2,
   },
   backButton: {
     backgroundColor: '#FFFFFF',
@@ -828,7 +1057,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1A49D8',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 20,
     shadowColor: '#1A49D8',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.22,
