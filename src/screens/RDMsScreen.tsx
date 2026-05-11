@@ -124,17 +124,13 @@ export default function RDMsScreen({
   initialDraft,
   onDraftChange,
 }: RDMsScreenProps) {
-  const proveedorOptions = [
-    'ACERO Y PRENSAS S.A DE C.V.',
-    'PLESA STEEL',
-    'KLOECKNER METALS DE MEXICO',
-    'TERNIUM MEXICO S.A. de C.V.',
-  ];
   const disposicionOptions = ['Desviacion', 'Devolucion', 'SCRAP', 'Retrabajo'];
 
   const [isLoadingFolio, setIsLoadingFolio] = useState(false);
   const [isLoadingMaterialCatalog, setIsLoadingMaterialCatalog] = useState(false);
+  const [isLoadingProveedores, setIsLoadingProveedores] = useState(false);
   const [materialCatalog, setMaterialCatalog] = useState<MaterialCatalogItem[]>([]);
+  const [proveedorOptions, setProveedorOptions] = useState<string[]>([]);
   const [showCodigoMaterialPicker, setShowCodigoMaterialPicker] = useState(false);
   const [showProveedorPicker, setShowProveedorPicker] = useState(false);
   const [showDescripcionPicker, setShowDescripcionPicker] = useState(false);
@@ -297,6 +293,55 @@ export default function RDMsScreen({
     };
 
     void fetchMaterialCatalog();
+  }, []);
+
+  useEffect(() => {
+    const fetchProveedores = async () => {
+      setIsLoadingProveedores(true);
+      try {
+        const response = await fetch(API_ENDPOINTS.rdmProveedores, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        const payload = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          const message =
+            payload && typeof payload === 'object' && 'message' in payload && typeof payload.message === 'string'
+              ? payload.message
+              : 'No fue posible cargar proveedores.';
+          throw new Error(message);
+        }
+
+        const proveedores = Array.isArray(payload)
+          ? payload
+              .map((item: unknown) => {
+                if (typeof item === 'object' && item !== null && 'Proveedor' in item) {
+                  const prov = (item as Record<string, unknown>).Proveedor;
+                  return typeof prov === 'string' ? prov : null;
+                }
+                return null;
+              })
+              .filter((p: string | null) => p !== null)
+          : [];
+
+        if (proveedores.length === 0) {
+          throw new Error('El backend no devolvio lista de proveedores valida.');
+        }
+
+        setProveedorOptions(proveedores);
+      } catch (error) {
+        Alert.alert(
+          'Proveedores no disponibles',
+          error instanceof Error ? error.message : 'No fue posible cargar proveedores.',
+        );
+      } finally {
+        setIsLoadingProveedores(false);
+      }
+    };
+
+    void fetchProveedores();
   }, []);
 
   const generateAndStorePdfForRdm = async (pdfInput: {
@@ -581,7 +626,7 @@ export default function RDMsScreen({
                   style={styles.input}
                   onPress={() => setShowProveedorPicker(true)}
                   activeOpacity={0.8}
-                  disabled={isLoadingFolio}
+                  disabled={isLoadingFolio || isLoadingProveedores}
                 >
                   <View style={styles.selectRow}>
                     <Text style={form.proveedor ? styles.selectText : styles.selectPlaceholderText}>

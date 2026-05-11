@@ -9,6 +9,7 @@ export const API_ENDPOINTS = {
   login: `${MOBILE_API_BASE}/signing/login`,
   recoveryBase: `${MOBILE_API_BASE}/signing/recover`,
   reorders: `${MOBILE_API_BASE}/reorders`,
+  rdms: `${MOBILE_API_BASE}/rdms`,
   newFolio: `${MOBILE_API_BASE}/nuevoFolioReorden`,
   lineas: `${MOBILE_API_BASE}/getLineas`,
   areas: `${MOBILE_API_BASE}/getArea`,
@@ -20,9 +21,19 @@ export const API_ENDPOINTS = {
   componentes: `${MOBILE_API_BASE}/getComponentes`,
   saveReorder: `${MOBILE_API_BASE}/saveReorder`,
   saveRDM: `${MOBILE_API_BASE}/saveRDM`,
+  saveRdmFile: `${MOBILE_API_BASE}/saveRdmFile`,
+  generateRdmReport: `${MOBILE_API_BASE}/generateRdmReport`,
+  rdmFile: `${MOBILE_API_BASE}/rdmFile`,
+  saveRdmFotos: `${MOBILE_API_BASE}/saveRdmFotos`,
   newRdmFolio: `${MOBILE_API_BASE}/nuevoFolioRdm`,
+  rdmRollosMatl: `${MOBILE_API_BASE}/getRollosMatl`,
+  rdmProveedores: `${MOBILE_API_BASE}/getProveedoresMatl`,
+  updateRDM: `${MOBILE_API_BASE}/updateRDM`,
+  getRdmFotos: `${MOBILE_API_BASE}/getRdmFotos`,
+  deleteRdmFoto: `${MOBILE_API_BASE}/deleteRdmFoto`,
 };
 
 export const DYMO_ENDPOINTS = {
   print: `${DYMO_API_BASE}/print`,
+  saveMovimientoRdm: `${MOBILE_API_BASE}/saveMovimientoRdm`,
 };

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   Alert,
   Image,
+  Modal,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -10,14 +11,26 @@ import {
   View,
 } from 'react-native';
 import { Asset, launchCamera, launchImageLibrary } from 'react-native-image-picker';
+import { API_ENDPOINTS } from '../config/api';
 
 type FotosRDMScreenProps = {
   onBack: () => void;
+  onSaved: () => void;
   folio: string;
 };
 
-export default function FotosRDMScreen({ onBack, folio }: FotosRDMScreenProps) {
-  const [photos, setPhotos] = useState<Array<{ id: string; uri: string }>>([]);
+type RdmPhoto = {
+  id: string;
+  uri: string;
+  mimeType: string;
+  fileDataBase64: string;
+  fileSize: number;
+};
+
+export default function FotosRDMScreen({ onBack, onSaved, folio }: FotosRDMScreenProps) {
+  const [photos, setPhotos] = useState<RdmPhoto[]>([]);
+  const [selectedPhoto, setSelectedPhoto] = useState<RdmPhoto | null>(null);
+  const [isSavingPhotos, setIsSavingPhotos] = useState(false);
 
   const appendAssets = (assets?: Asset[]) => {
     if (!assets?.length) {
@@ -25,10 +38,15 @@ export default function FotosRDMScreen({ onBack, folio }: FotosRDMScreenProps) {
     }
 
     const nextPhotos = assets
-      .filter(asset => !!asset.uri)
+      .filter(asset => !!asset.uri && !!asset.base64)
       .map(asset => ({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
         uri: asset.uri as string,
+        mimeType: asset.type?.trim() || 'application/octet-stream',
+        fileDataBase64: asset.base64 as string,
+        fileSize: typeof asset.fileSize === 'number' && Number.isFinite(asset.fileSize)
+          ? Math.max(0, Math.round(asset.fileSize))
+          : 0,
       }));
 
     if (!nextPhotos.length) {
@@ -44,6 +62,7 @@ export default function FotosRDMScreen({ onBack, folio }: FotosRDMScreenProps) {
         mediaType: 'photo',
         selectionLimit: 1,
         quality: 0.8,
+        includeBase64: true,
       });
 
       if (result.didCancel) {
@@ -71,6 +90,7 @@ export default function FotosRDMScreen({ onBack, folio }: FotosRDMScreenProps) {
         saveToPhotos: true,
         quality: 0.8,
         cameraType: 'back',
+        includeBase64: true,
       });
 
       if (result.didCancel) {
@@ -91,13 +111,82 @@ export default function FotosRDMScreen({ onBack, folio }: FotosRDMScreenProps) {
     }
   };
 
-  const handleSavePhotos = () => {
+  const handleSavePhotos = async () => {
     if (!photos.length) {
       Alert.alert('Sin fotos', 'Agrega al menos una fotografia antes de guardar.');
       return;
     }
 
-    Alert.alert('Guardado', `Se guardaron ${photos.length} fotografias del folio ${folio || 'N/A'}.`);
+    if (!folio.trim()) {
+      Alert.alert('Folio no disponible', 'No se puede guardar fotografias sin folio de RDM.');
+      return;
+    }
+
+    const missingBinaryData = photos.some(photo => !photo.fileDataBase64);
+    if (missingBinaryData) {
+      Alert.alert('Foto incompleta', 'Una o mas fotografias no tienen datos binarios. Vuelve a capturarlas.');
+      return;
+    }
+
+    try {
+      setIsSavingPhotos(true);
+
+      const response = await fetch(API_ENDPOINTS.saveRdmFotos, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          folio: folio.trim(),
+          photos: photos.map(photo => ({
+            mimeType: photo.mimeType,
+            fileData: photo.fileDataBase64,
+            fileSize: photo.fileSize,
+          })),
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const message =
+          payload && typeof payload === 'object' && 'message' in payload && typeof payload.message === 'string'
+            ? payload.message
+            : 'No fue posible guardar las fotografias del RDM.';
+        throw new Error(message);
+      }
+
+      Alert.alert(
+        'Guardado',
+        `Se guardaron ${photos.length} fotografias del folio ${folio || 'N/A'}.`,
+        [{ text: 'OK', onPress: onSaved }],
+      );
+    } catch (error) {
+      Alert.alert(
+        'Error al guardar',
+        error instanceof Error ? error.message : 'No fue posible guardar las fotografias del RDM.',
+      );
+    } finally {
+      setIsSavingPhotos(false);
+    }
+  };
+
+  const handleDeleteSelectedPhoto = () => {
+    if (!selectedPhoto) {
+      return;
+    }
+
+    const photoToDelete = selectedPhoto;
+
+    Alert.alert('Eliminar fotografia', '¿Deseas eliminar esta fotografia?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar',
+        style: 'destructive',
+        onPress: () => {
+          setPhotos(prev => prev.filter(photo => photo.id !== photoToDelete.id));
+          setSelectedPhoto(null);
+        },
+      },
+    ]);
   };
 
   return (
@@ -127,12 +216,17 @@ export default function FotosRDMScreen({ onBack, folio }: FotosRDMScreenProps) {
 
             <View style={styles.grid}>
               {photos.map((photo, index) => (
-                <View key={photo.id} style={styles.photoCell}>
+                <TouchableOpacity
+                  key={photo.id}
+                  style={styles.photoCell}
+                  activeOpacity={0.9}
+                  onPress={() => setSelectedPhoto(photo)}
+                >
                   <Image source={{ uri: photo.uri }} style={styles.photoImage} resizeMode="cover" />
                   <View style={styles.photoFooter}>
                     <Text style={styles.photoLabel}>Foto {index + 1}</Text>
                   </View>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           </ScrollView>
@@ -152,15 +246,50 @@ export default function FotosRDMScreen({ onBack, folio }: FotosRDMScreenProps) {
           </View>
 
           <TouchableOpacity
-            style={[styles.saveButton, photos.length === 0 ? styles.saveButtonDisabled : null]}
+            style={[styles.saveButton, photos.length === 0 || isSavingPhotos ? styles.saveButtonDisabled : null]}
             activeOpacity={0.85}
-            onPress={handleSavePhotos}
-            disabled={photos.length === 0}
+            onPress={() => {
+              void handleSavePhotos();
+            }}
+            disabled={photos.length === 0 || isSavingPhotos}
           >
-            <Text style={styles.saveButtonText}>Guardar Fotografias ({photos.length})</Text>
+            <Text style={styles.saveButtonText}>
+              {isSavingPhotos ? 'Guardando fotografias...' : `Guardar Fotografias (${photos.length})`}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
+
+      <Modal
+        visible={selectedPhoto !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedPhoto(null)}
+      >
+        <View style={styles.previewOverlay}>
+          <View style={styles.previewTopActions}>
+            <TouchableOpacity
+              style={styles.previewDeleteButton}
+              activeOpacity={0.85}
+              onPress={handleDeleteSelectedPhoto}
+            >
+              <Text style={styles.previewDeleteText}>Eliminar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.previewCloseButton}
+              activeOpacity={0.85}
+              onPress={() => setSelectedPhoto(null)}
+            >
+              <Text style={styles.previewCloseText}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+
+          {selectedPhoto ? (
+            <Image source={{ uri: selectedPhoto.uri }} style={styles.previewImage} resizeMode="contain" />
+          ) : null}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -339,5 +468,51 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 18,
+  },
+  previewTopActions: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  previewDeleteButton: {
+    backgroundColor: 'rgba(220, 38, 38, 0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(254, 202, 202, 0.8)',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  previewDeleteText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  previewCloseButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  previewCloseText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  previewImage: {
+    width: '100%',
+    flex: 1,
   },
 });
