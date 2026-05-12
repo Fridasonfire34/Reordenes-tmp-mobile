@@ -1,0 +1,32 @@
+{
+  "bridges": [
+    {
+      "id": "embarques",
+      "name": "DYMO Embarques",
+      "port": 3010,
+      "location": "192.168.16.230",
+      "description": "Impresora para etiquetas de embarque"
+    },
+    {
+      "id": "calidad",
+      "name": "DYMO Calidad",
+      "port": 3011,
+      "location": "192.168.16.224",
+      "description": "Impresora para QA y control de calidad"
+    },
+    {
+      "id": "viper",
+      "name": "DYMO Viper",
+      "port": 3012,
+      "location": "192.168.17.9",
+      "description": "Impresora Viper para producción"
+    },
+    {
+      "id": "metalicas",
+      "name": "DYMO Partes Metálicas",
+      "port": 3013,
+      "location": "192.168.1.103",
+      "description": "Impresora para piezas metálicas"
+    }
+  ]
+}

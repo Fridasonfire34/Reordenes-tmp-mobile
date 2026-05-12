@@ -18,6 +18,9 @@ const LABEL_PRESETS_MM = {
   '25x54': { width: 54, height: 25.4 },
 };
 
+const BRIDGE_NAME = (process.env.BRIDGE_NAME || 'DYMO Sin Nombre').trim();
+const BRIDGE_LOCATION = (process.env.BRIDGE_LOCATION || 'localhost').trim();
+
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
@@ -107,6 +110,16 @@ app.get('/api/rdm/health', (_req, res) => {
   res.json({ ok: true, service: 'rdm-dymo-bridge' });
 });
 
+app.get('/api/rdm/info', (_req, res) => {
+  res.json({
+    name: BRIDGE_NAME,
+    port: PORT,
+    location: BRIDGE_LOCATION,
+    printer: DEFAULT_PRINTER,
+    preset: DEFAULT_PRESET,
+  });
+});
+
 app.get('/api/rdm/printers', async (_req, res) => {
   try {
     const printers = await getPrinters();
@@ -177,4 +190,5 @@ app.listen(PORT, () => {
   console.log(`RDM bridge activo en http://localhost:${PORT}`);
   console.log(`Impresora predeterminada: ${DEFAULT_PRINTER}`);
   console.log(`Preset por defecto: ${DEFAULT_PRESET}`);
+  console.log(`Bridge: ${BRIDGE_NAME}`);
 });

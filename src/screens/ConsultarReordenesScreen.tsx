@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { API_ENDPOINTS, DYMO_ENDPOINTS } from '../config/api';
+import { BridgeSelectorModal } from '../components/BridgeSelectorModal';
+import { Bridge, getBridgeUrl } from '../utils/bridgeManager';
 
 type ConsultarReordenesScreenProps = {
   onBack: () => void;
@@ -113,8 +115,10 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [isSendingToDymo, setIsSendingToDymo] = useState(false);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [showBridgeSelector, setShowBridgeSelector] = useState(false);
   const [printLabelData, setPrintLabelData] = useState<PrintLabelData | null>(null);
   const [previewHtml, setPreviewHtml] = useState('');
+  const [selectedBridgeName, setSelectedBridgeName] = useState('');
 
   const fetchReordenes = useCallback(async () => {
     setLoading(true);
@@ -324,7 +328,7 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
     setShowPrintPreview(true);
   };
 
-  const handleSendToDymo = async () => {
+  const handleSendToDymo = async (bridge?: Bridge) => {
     if (!printLabelData) {
       return;
     }
@@ -340,7 +344,11 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
 
     setIsSendingToDymo(true);
     try {
-      const response = await fetch(DYMO_PRINT_API_URL, {
+      const targetPrintUrl = bridge
+        ? `${getBridgeUrl(bridge.location, bridge.port)}/api/rdm/print`
+        : DYMO_PRINT_API_URL;
+
+      const response = await fetch(targetPrintUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -359,6 +367,9 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
           text: 'OK',
           onPress: () => {
             setShowPrintPreview(false);
+            if (bridge) {
+              setSelectedBridgeName(bridge.name);
+            }
           },
         },
       ]);
@@ -477,12 +488,16 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
 
             <TouchableOpacity
               style={[styles.modalDymoButton, isSendingToDymo && { opacity: 0.7 }]}
-              onPress={() => void handleSendToDymo()}
+              onPress={() => setShowBridgeSelector(true)}
               activeOpacity={0.85}
               disabled={isSendingToDymo}
             >
               <Text style={styles.modalDymoButtonText}>
-                {isSendingToDymo ? 'Enviando...' : 'Enviar a DYMO'}
+                {isSendingToDymo
+                  ? 'Enviando...'
+                  : selectedBridgeName
+                    ? `Enviar a DYMO (${selectedBridgeName})`
+                    : 'Enviar a DYMO'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -495,6 +510,16 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
           />
         </SafeAreaView>
       </Modal>
+
+      <BridgeSelectorModal
+        visible={showBridgeSelector}
+        onCancel={() => setShowBridgeSelector(false)}
+        isLoading={isSendingToDymo}
+        onSelectBridge={bridge => {
+          setShowBridgeSelector(false);
+          void handleSendToDymo(bridge);
+        }}
+      />
     </SafeAreaView>
   );
 }

@@ -21,7 +21,7 @@ const RECOVERY_URL = API_ENDPOINTS.recoveryBase;
 const getLoginUrls = (): string[] => {
   try {
     const parsed = new URL(LOGIN_URL);
-    const preferredHosts = ['192.168.16.224', '10.0.2.2', '127.0.0.1'];
+    const preferredHosts = ['192.168.17.9', '10.0.2.2', '127.0.0.1'];
     const hostsToTry = [...preferredHosts.filter(host => host !== parsed.hostname), parsed.hostname];
     const portSegment = parsed.port ? `:${parsed.port}` : '';
     const pathAndQuery = `${parsed.pathname}${parsed.search}`;
