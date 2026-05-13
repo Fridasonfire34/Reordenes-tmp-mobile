@@ -2,24 +2,24 @@
   "bridges": [
     {
       "id": "embarques",
-      "name": "DYMO Embarques",
+      "name": "DYMO LabelWriter 550 Embarques",
       "port": 3010,
       "location": "192.168.16.230",
       "description": "Impresora para etiquetas de embarque"
     },
     {
       "id": "calidad",
-      "name": "DYMO Calidad",
+      "name": "DYMO LabelWriter 550 Calidad",
       "port": 3011,
       "location": "192.168.16.224",
       "description": "Impresora para QA y control de calidad"
     },
     {
-      "id": "viper",
-      "name": "DYMO Viper",
+      "id": "expansion",
+      "name": "DYMO LabelWriter 550 Expansion",
       "port": 3012,
-      "location": "192.168.17.9",
-      "description": "Impresora Viper para producción"
+      "location": "192.168.16.230",
+      "description": "Impresora para expansión"
     },
     {
       "id": "metalicas",
