@@ -200,6 +200,7 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
   const [manual, setManual] = useState(false);
   const [kanban, setKanban] = useState(false);
   const [revisionIngenieria, setRevisionIngenieria] = useState(false);
+  const [noPpm, setNoPpm] = useState(false);
 
   const [semana, setSemana] = useState('');
   const [numeroParte, setNumeroParte] = useState('');
@@ -645,6 +646,7 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
         captureDateTime: nowDateTime.sql,
         numerosParteSelectedId: selectedRow?.id ?? null,
         noMatchFound: numeroParteNoMatch,
+        noPpm,
       };
 
       let response: Response | null = null;
@@ -1040,6 +1042,11 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
               label="Revision con ingenieria"
               value={revisionIngenieria}
               onToggle={() => setRevisionIngenieria(prev => !prev)}
+            />
+            <CheckOption
+              label="No PPM"
+              value={noPpm}
+              onToggle={() => setNoPpm(prev => !prev)}
             />
           </View>
         </View>

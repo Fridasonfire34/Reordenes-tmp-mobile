@@ -66,6 +66,7 @@ const formatCurrentDateTime = (): string => {
 
 const SAVE_RDM_URL = API_ENDPOINTS.saveRDM;
 const RDM_ROLLOS_MATL_URL = API_ENDPOINTS.rdmRollosMatl;
+const OTHER_OPTION = 'Otro';
 
 const getStringFromKeys = (source: Record<string, unknown>, keys: string[]): string => {
   for (const key of keys) {
@@ -137,6 +138,9 @@ export default function RDMsScreen({
   const [showDisposicionPicker, setShowDisposicionPicker] = useState(false);
   const [showPhotoOrSaveModal, setShowPhotoOrSaveModal] = useState(false);
   const [isSavingRdm, setIsSavingRdm] = useState(false);
+  const [isCodigoMaterialManual, setIsCodigoMaterialManual] = useState(false);
+  const [isDescripcionManual, setIsDescripcionManual] = useState(false);
+  const [isProveedorManual, setIsProveedorManual] = useState(false);
 
   const [form, setForm] = useState<FormState>(() => {
     if (initialDraft?.form) {
@@ -167,8 +171,19 @@ export default function RDMsScreen({
 
   const codigoMaterialOptions = Array.from(new Set(materialCatalog.map(item => item.codigo)));
   const descripcionOptions = Array.from(new Set(materialCatalog.map(item => item.descripcion)));
+  const codigoMaterialPickerOptions = [...codigoMaterialOptions, OTHER_OPTION];
+  const descripcionPickerOptions = [...descripcionOptions, OTHER_OPTION];
+  const proveedorPickerOptions = [...proveedorOptions, OTHER_OPTION];
 
   const handleSelectCodigoMaterial = (codigo: string) => {
+    if (codigo === OTHER_OPTION) {
+      setIsCodigoMaterialManual(true);
+      setForm(prev => ({ ...prev, codigoMaterial: '' }));
+      setShowCodigoMaterialPicker(false);
+      return;
+    }
+
+    setIsCodigoMaterialManual(false);
     const match = materialCatalog.find(item => item.codigo === codigo);
     setForm(prev => ({
       ...prev,
@@ -179,6 +194,14 @@ export default function RDMsScreen({
   };
 
   const handleSelectDescripcion = (descripcion: string) => {
+    if (descripcion === OTHER_OPTION) {
+      setIsDescripcionManual(true);
+      setForm(prev => ({ ...prev, material: '' }));
+      setShowDescripcionPicker(false);
+      return;
+    }
+
+    setIsDescripcionManual(false);
     const match = materialCatalog.find(item => item.descripcion === descripcion);
     setForm(prev => ({
       ...prev,
@@ -186,6 +209,19 @@ export default function RDMsScreen({
       codigoMaterial: match ? match.codigo : prev.codigoMaterial,
     }));
     setShowDescripcionPicker(false);
+  };
+
+  const handleSelectProveedor = (proveedor: string) => {
+    if (proveedor === OTHER_OPTION) {
+      setIsProveedorManual(true);
+      updateField('proveedor', '');
+      setShowProveedorPicker(false);
+      return;
+    }
+
+    setIsProveedorManual(false);
+    updateField('proveedor', proveedor);
+    setShowProveedorPicker(false);
   };
 
   const missingRequiredFields = [
@@ -305,7 +341,7 @@ export default function RDMsScreen({
         });
 
         const payload = await response.json().catch(() => null);
-
+ 
         if (!response.ok) {
           const message =
             payload && typeof payload === 'object' && 'message' in payload && typeof payload.message === 'string'
@@ -582,14 +618,29 @@ export default function RDMsScreen({
                   disabled={isLoadingFolio || isLoadingMaterialCatalog}
                 >
                   <View style={styles.selectRow}>
-                    <Text style={form.codigoMaterial ? styles.selectText : styles.selectPlaceholderText}>
-                      {form.codigoMaterial || (isLoadingMaterialCatalog ? 'Cargando codigos...' : 'Selecciona codigo')}
+                    <Text style={(form.codigoMaterial || isCodigoMaterialManual) ? styles.selectText : styles.selectPlaceholderText}>
+                      {isCodigoMaterialManual
+                        ? OTHER_OPTION
+                        : (form.codigoMaterial || (isLoadingMaterialCatalog ? 'Cargando codigos...' : 'Selecciona codigo'))}
                     </Text>
                     <Text style={styles.selectArrow}>▾</Text>
                   </View>
                 </TouchableOpacity>
               </View>
             </View>
+
+            {isCodigoMaterialManual ? (
+              <View style={styles.fieldBlock}>
+                <TextInput
+                  style={[styles.input, styles.manualInput]}
+                  value={form.codigoMaterial}
+                  onChangeText={text => updateField('codigoMaterial', text)}
+                  editable={!isLoadingFolio}
+                  placeholder="Escribe el codigo manual"
+                  placeholderTextColor="#9AA6B2"
+                />
+              </View>
+            ) : null}
 
             <View style={styles.fieldBlock}>
               <Text style={styles.fieldLabel}>Descripcion</Text>
@@ -600,12 +651,27 @@ export default function RDMsScreen({
                 disabled={isLoadingFolio || isLoadingMaterialCatalog}
               >
                 <View style={styles.selectRow}>
-                  <Text style={form.material ? styles.selectText : styles.selectPlaceholderText}>
-                    {form.material || (isLoadingMaterialCatalog ? 'Cargando descripciones...' : 'Selecciona descripcion')}
+                  <Text style={(form.material || isDescripcionManual) ? styles.selectText : styles.selectPlaceholderText}>
+                    {isDescripcionManual
+                      ? OTHER_OPTION
+                      : (form.material || (isLoadingMaterialCatalog ? 'Cargando descripciones...' : 'Selecciona descripcion'))}
                   </Text>
                   <Text style={styles.selectArrow}>▾</Text>
                 </View>
               </TouchableOpacity>
+              {isDescripcionManual ? (
+                <TextInput
+                  style={[styles.input, styles.inputMultiline, styles.manualInput]}
+                  value={form.material}
+                  onChangeText={text => updateField('material', text)}
+                  editable={!isLoadingFolio}
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                  placeholder="Escribe la descripcion manual"
+                  placeholderTextColor="#9AA6B2"
+                />
+              ) : null}
             </View>
 
             <View style={styles.row2}>
@@ -629,14 +695,27 @@ export default function RDMsScreen({
                   disabled={isLoadingFolio || isLoadingProveedores}
                 >
                   <View style={styles.selectRow}>
-                    <Text style={form.proveedor ? styles.selectText : styles.selectPlaceholderText}>
-                      {form.proveedor || 'Selecciona proveedor'}
+                    <Text style={(form.proveedor || isProveedorManual) ? styles.selectText : styles.selectPlaceholderText}>
+                      {isProveedorManual ? OTHER_OPTION : (form.proveedor || 'Selecciona proveedor')}
                     </Text>
                     <Text style={styles.selectArrow}>▾</Text>
                   </View>
                 </TouchableOpacity>
               </View>
             </View>
+
+            {isProveedorManual ? (
+              <View style={styles.fieldBlock}>
+                <TextInput
+                  style={[styles.input, styles.manualInput]}
+                  value={form.proveedor}
+                  onChangeText={text => updateField('proveedor', text)}
+                  editable={!isLoadingFolio}
+                  placeholder="Escribe el proveedor manual"
+                  placeholderTextColor="#9AA6B2"
+                />
+              </View>
+            ) : null}
 
             <View style={styles.row2}>
               <View style={styles.halfField}>
@@ -744,7 +823,7 @@ export default function RDMsScreen({
             <Text style={styles.modalTitle}>Selecciona codigo de material</Text>
 
             <ScrollView style={styles.modalList} keyboardShouldPersistTaps="handled">
-              {codigoMaterialOptions.map(option => (
+              {codigoMaterialPickerOptions.map(option => (
                 <TouchableOpacity
                   key={option}
                   style={styles.modalOption}
@@ -778,15 +857,12 @@ export default function RDMsScreen({
             <Text style={styles.modalTitle}>Selecciona proveedor</Text>
 
             <ScrollView style={styles.modalList} keyboardShouldPersistTaps="handled">
-              {proveedorOptions.map(option => (
+              {proveedorPickerOptions.map(option => (
                 <TouchableOpacity
                   key={option}
                   style={styles.modalOption}
                   activeOpacity={0.8}
-                  onPress={() => {
-                    updateField('proveedor', option);
-                    setShowProveedorPicker(false);
-                  }}
+                  onPress={() => handleSelectProveedor(option)}
                 >
                   <Text style={styles.modalOptionText}>{option}</Text>
                 </TouchableOpacity>
@@ -815,7 +891,7 @@ export default function RDMsScreen({
             <Text style={styles.modalTitle}>Selecciona descripcion</Text>
 
             <ScrollView style={styles.modalList} keyboardShouldPersistTaps="handled">
-              {descripcionOptions.map(option => (
+              {descripcionPickerOptions.map(option => (
                 <TouchableOpacity
                   key={option}
                   style={styles.modalOption}
@@ -1006,6 +1082,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     color: '#102033',
     fontSize: 14,
+  },
+  manualInput: {
+    marginTop: 8,
   },
   dateText: {
     color: '#102033',

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   View,
@@ -21,7 +21,7 @@ const RECOVERY_URL = API_ENDPOINTS.recoveryBase;
 const getLoginUrls = (): string[] => {
   try {
     const parsed = new URL(LOGIN_URL);
-    const preferredHosts = ['192.168.17.9', '10.0.2.2', '127.0.0.1'];
+    const preferredHosts = ['192.168.16.224', '10.0.2.2', '127.0.0.1'];
     const hostsToTry = [...preferredHosts.filter(host => host !== parsed.hostname), parsed.hostname];
     const portSegment = parsed.port ? `:${parsed.port}` : '';
     const pathAndQuery = `${parsed.pathname}${parsed.search}`;
@@ -39,11 +39,12 @@ type LoginScreenProps = {
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [nomina, setNomina] = useState('');
   const [password, setPassword] = useState('');
-  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [recoveryNomina, setRecoveryNomina] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const passwordInputRef = useRef<TextInput>(null);
   const [recoveryCode, setRecoveryCode] = useState('');
+  const [recoveryTimeLeft, setRecoveryTimeLeft] = useState(10 * 60);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -56,9 +57,33 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     setNomina(value.replace(/\D/g, ''));
   };
 
+  const formatRecoveryTime = (seconds: number): string => {
+    const safeSeconds = Math.max(0, seconds);
+    const minutes = Math.floor(safeSeconds / 60);
+    const remainingSeconds = safeSeconds % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+  };
+
+  useEffect(() => {
+    if (screenMode !== 'verify-code') {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setRecoveryTimeLeft(prev => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [screenMode]);
+
   const handleSendRecoveryCode = async () => {
-    if (!recoveryEmail.trim()) {
-      Alert.alert('Dato incompleto', 'Ingresa tu correo para recuperar la contraseña.');
+    if (!recoveryNomina.trim()) {
+      Alert.alert('Dato incompleto', 'Ingresa tu número de nómina para recuperar la contraseña.');
+      return;
+    }
+
+    if (!/^\d+$/.test(recoveryNomina.trim())) {
+      Alert.alert('Nómina inválida', 'La nómina debe contener solo números.');
       return;
     }
 
@@ -67,7 +92,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       const response = await fetch(`${RECOVERY_URL}/request-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ correo: recoveryEmail.trim() }),
+        body: JSON.stringify({ nomina: recoveryNomina.trim() }),
       });
 
       const data = await response.json();
@@ -77,8 +102,9 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         return;
       }
 
-      console.log('Recovery code requested for:', recoveryEmail.trim());
+      console.log('Recovery code requested for nomina:', recoveryNomina.trim());
       setRecoveryCode('');
+      setRecoveryTimeLeft(10 * 60);
       setScreenMode('verify-code');
     } catch (error) {
       Alert.alert('Error de red', 'No se pudo conectar con el servidor.');
@@ -94,12 +120,17 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       return;
     }
 
+    if (recoveryTimeLeft <= 0) {
+      Alert.alert('Código expirado', 'El código expiró. Solicita uno nuevo.');
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       const response = await fetch(`${RECOVERY_URL}/validate-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ correo: recoveryEmail.trim(), codigo: recoveryCode.trim() }),
+        body: JSON.stringify({ nomina: recoveryNomina.trim(), codigo: recoveryCode.trim() }),
       });
 
       const data = await response.json();
@@ -140,7 +171,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          correo: recoveryEmail.trim(),
+          nomina: recoveryNomina.trim(),
           codigo: recoveryCode.trim(),
           nuevaContrasena: newPassword,
         }),
@@ -154,8 +185,9 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       }
 
       Alert.alert('Listo', 'Contraseña actualizada correctamente.');
-      setRecoveryEmail('');
+      setRecoveryNomina('');
       setRecoveryCode('');
+      setRecoveryTimeLeft(10 * 60);
       setNewPassword('');
       setConfirmPassword('');
       setShowNewPassword(false);
@@ -269,7 +301,8 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   };
 
   const handleForgotPassword = () => {
-    setRecoveryEmail('');
+    setRecoveryNomina('');
+    setRecoveryTimeLeft(10 * 60);
     setScreenMode('forgot-password');
   };
 
@@ -300,7 +333,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             <View style={styles.formCard}>
               <Text style={styles.formTitle}>Iniciar sesión</Text>
 
-              <Text style={styles.label}>Numero de nomina</Text>
+              <Text style={styles.label}>Número de nómina</Text>
               <TextInput
                 style={styles.input}
                 value={nomina}
@@ -357,17 +390,17 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             <View style={styles.formCard}>
               <Text style={styles.formTitle}>Recuperar contraseña</Text>
               <Text style={styles.recoveryDescription}>
-                Escribe tu correo para enviarte el código de recuperación.
+                Escribe tu número de nómina para enviar el código de recuperación al correo registrado.
               </Text>
 
               <View style={styles.divider} />
 
-              <Text style={styles.label}>Correo</Text>
+              <Text style={styles.label}>Número de nómina</Text>
               <TextInput
                 style={styles.input}
-                value={recoveryEmail}
-                onChangeText={setRecoveryEmail}
-                keyboardType="email-address"
+                value={recoveryNomina}
+                onChangeText={value => setRecoveryNomina(value.replace(/\D/g, ''))}
+                keyboardType="number-pad"
                 autoCapitalize="none"
                 autoCorrect={false}
                 placeholderTextColor="#B0B0B0"
@@ -392,12 +425,13 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             <View style={styles.formCard}>
               <Text style={styles.formTitle}>Recuperar contraseña</Text>
               <Text style={styles.recoveryHighlightText}>
-                Te enviamos un código a tu correo. Introdúcelo a continuación.
+                Se envió un código al correo registrado. Introdúcelo a continuación.
               </Text>
 
               <View style={styles.recoveryNoticeRow}>
                 <Text style={styles.recoveryNoticeIcon}>⏰</Text>
-                <Text style={styles.recoveryNoticeText}>El código expira en 15 minutos</Text>
+                <Text style={styles.recoveryNoticeText}>El código expira en 10 minutos</Text>
+                <Text style={styles.recoveryCountdown}>{formatRecoveryTime(recoveryTimeLeft)}</Text>
               </View>
 
               <View style={styles.divider} />
@@ -416,9 +450,16 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 onSubmitEditing={handleVerifyCode}
               />
 
-              <TouchableOpacity style={styles.loginButton} onPress={handleVerifyCode}>
+              <TouchableOpacity
+                style={[
+                  styles.loginButton,
+                  (isSubmitting || recoveryTimeLeft <= 0) && styles.loginButtonDisabled,
+                ]}
+                onPress={handleVerifyCode}
+                disabled={isSubmitting || recoveryTimeLeft <= 0}
+              >
                 <Text style={styles.loginButtonText}>
-                  {isSubmitting ? 'Validando...' : 'Validar'}
+                  {isSubmitting ? 'Validando...' : recoveryTimeLeft <= 0 ? 'Código expirado' : 'Validar'}
                 </Text>
               </TouchableOpacity>
 
@@ -493,7 +534,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               </TouchableOpacity>
 
               <Text style={styles.recoverySuccessText}>
-                Codigo correcto. Ahora ingresa tu nueva contraseña.
+                Código correcto. Ahora ingresa tu nueva contraseña.
               </Text>
             </View>
           )}
@@ -597,6 +638,12 @@ const styles = StyleSheet.create({
   recoveryNoticeText: {
     fontSize: 14,
     color: '#666666',
+    marginRight: 8,
+  },
+  recoveryCountdown: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: BRAND_BLUE,
   },
   divider: {
     borderBottomWidth: 1,
