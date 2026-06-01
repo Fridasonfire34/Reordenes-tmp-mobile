@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Animated,
   Modal,
   SafeAreaView,
   ScrollView,
@@ -11,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { API_ENDPOINTS, DYMO_ENDPOINTS } from '../config/api';
 import { formatLocalDateTimeForSql } from '../utils/dateTime';
 
@@ -44,6 +46,8 @@ type NumeroParteRow = {
   calibre: string;
   secuencia: string;
   balloon: string;
+  cart: string;
+  lado: string;
   raw: Record<string, unknown>;
 };
 
@@ -207,7 +211,8 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
   const [idNumeroParte, setIdNumeroParte] = useState('');
   const [numeroParteRows, setNumeroParteRows] = useState<NumeroParteRow[]>([]);
   const [numeroParteNoMatch, setNumeroParteNoMatch] = useState(false);
-  const [selectedNumeroParteRow, setSelectedNumeroParteRow] = useState<number | null>(null);
+  const [selectedNumeroParteRows, setSelectedNumeroParteRows] = useState<Set<number>>(new Set());
+  const [showScanner, setShowScanner] = useState(false);
   const [selectedRowEnsamble, setSelectedRowEnsamble] = useState('');
   const [selectedRowComponente, setSelectedRowComponente] = useState('');
   const [selectedRowSource, setSelectedRowSource] = useState('');
@@ -237,6 +242,29 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
   const [showTipoReordenPicker, setShowTipoReordenPicker] = useState(false);
   const [showComponentePicker, setShowComponentePicker] = useState(false);
   const [showTurnoPicker, setShowTurnoPicker] = useState(false);
+
+  const plantaBorderAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (planta) {
+      plantaBorderAnim.stopAnimation();
+      plantaBorderAnim.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(plantaBorderAnim, { toValue: 1, duration: 600, useNativeDriver: false }),
+        Animated.timing(plantaBorderAnim, { toValue: 0, duration: 600, useNativeDriver: false }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [planta, plantaBorderAnim]);
+
+  const plantaBorderColor = plantaBorderAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#CBD5E0', '#F6AD55'],
+  });
 
   const nowDateTime = useMemo(() => {
     const now = new Date();
@@ -497,8 +525,8 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
     }
   };
 
-  const handleNumeroParteSubmit = async () => {
-    const numeroParteTrimmed = numeroParte.trim();
+  const handleNumeroParteSubmit = async (valueOverride?: string) => {
+    const numeroParteTrimmed = (valueOverride ?? numeroParte).trim();
     if (!numeroParteTrimmed) {
       return;
     }
@@ -575,7 +603,9 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
             material:   pickText(r, ['Material', 'material']),
             calibre:    pickText(r, ['Calibre', 'calibre']),
             secuencia:  pickText(r, ['Secuencia', 'secuencia']),
-            balloon:    pickText(r, ['Balloon Number', 'balloonNumber', 'BalloonNumber']),
+            balloon:    pickText(r, ['Balloon', 'balloon', 'Balloon Number', 'balloonNumber', 'BalloonNumber']),
+            cart:       pickText(r, ['Cart', 'cart']),
+            lado:       pickText(r, ['Lado', 'lado']),
             id:         id,
             raw: r,
           });
@@ -584,7 +614,7 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
 
       setNumeroParteRows(rows);
       setNumeroParteNoMatch(rows.length === 0);
-      setSelectedNumeroParteRow(null);
+      setSelectedNumeroParteRows(new Set());
       setSelectedRowEnsamble('');
       setSelectedRowComponente('');
       setSelectedRowSource('');
@@ -602,8 +632,8 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
     if (isSaving) return;
     setIsSaving(true);
     try {
-      const selectedRow =
-        selectedNumeroParteRow != null ? numeroParteRows[selectedNumeroParteRow] : null;
+      const firstSelectedIdx = selectedNumeroParteRows.size > 0 ? [...selectedNumeroParteRows][0] : null;
+      const selectedRow = firstSelectedIdx != null ? numeroParteRows[firstSelectedIdx] : null;
 
       const body = {
         folio,
@@ -973,14 +1003,16 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
           <View style={styles.plantaNoReprocessRow}>
             <View style={styles.firstRowRight}>
               <Text style={styles.label}>Planta *</Text>
-              <TouchableOpacity style={styles.input} onPress={() => setShowPlantaPicker(true)} activeOpacity={0.8}>
-                <View style={styles.selectRow}>
-                  <Text style={planta ? styles.selectText : styles.selectPlaceholderText}>
-                    {planta || 'Selecciona una planta'}
-                  </Text>
-                  <Text style={styles.selectArrow}>▾</Text>
-                </View>
-              </TouchableOpacity>
+              <Animated.View style={[styles.input, { borderColor: planta ? '#CBD5E0' : plantaBorderColor, padding: 0 }]}>
+                <TouchableOpacity style={styles.animatedPlantaInner} onPress={() => setShowPlantaPicker(true)} activeOpacity={0.8}>
+                  <View style={styles.selectRow}>
+                    <Text style={planta ? styles.selectText : styles.selectPlaceholderText}>
+                      {planta || 'Selecciona una planta'}
+                    </Text>
+                    <Text style={styles.selectArrow}>▾</Text>
+                  </View>
+                </TouchableOpacity>
+              </Animated.View>
             </View>
             <View style={styles.checkAligned}>
               <CheckOption
@@ -992,84 +1024,32 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
           </View>
         </View>
 
-        {/* ── Tarjeta: Proceso ── */}
-        <View style={[styles.card, { zIndex: 40 }]}>
-          <Text style={styles.sectionTitle}>Proceso</Text>
-          <View style={styles.checksRow}>
-            <CheckOption
-              label="Semana"
-              value={isSemanaChecked}
-              onToggle={() => setIsSemanaChecked(prev => !prev)}
-            />
-            <TextInput
-              style={[styles.input, styles.weekInput, !isSemanaChecked && styles.disabledInput]}
-              value={semana}
-              onChangeText={text => setSemana(text.replace(/\D/g, ''))}
-              placeholder={isSemanaChecked ? '' : 'Ej: 42'}
-              editable={isSemanaChecked}
-              keyboardType="number-pad"
-            />
-          </View>
-          <View style={styles.checksRow}>
-            <CheckOption
-              label="Panel Completo"
-              value={panelCompleto}
-              onToggle={() => handleExclusiveProcessToggle('panelCompleto')}
-            />
-            <CheckOption
-              label="Disparo"
-              value={disparo}
-              onToggle={() => handleExclusiveProcessToggle('disparo')}
-            />
-            <CheckOption
-              label="Lrt"
-              value={lrt}
-              onToggle={() => handleExclusiveProcessToggle('lrt')}
-            />
-            <CheckOption
-              label="Manual"
-              value={manual}
-              onToggle={() => handleExclusiveProcessToggle('manual')}
-            />
-            <CheckOption
-              label="Kanban"
-              value={kanban}
-              onToggle={() => handleExclusiveProcessToggle('kanban')}
-            />
-          </View>
-          <View style={styles.checksRow}>
-            <CheckOption
-              label="Revision con ingenieria"
-              value={revisionIngenieria}
-              onToggle={() => setRevisionIngenieria(prev => !prev)}
-            />
-            <CheckOption
-              label="No PPM"
-              value={noPpm}
-              onToggle={() => setNoPpm(prev => !prev)}
-            />
-          </View>
-        </View>
-
         {/* ── Tarjeta: Número de Parte ── */}
-        <View style={[styles.card, { zIndex: 30 }]}>
+        <View style={[styles.card, { zIndex: 40, opacity: planta ? 1 : 0.45 }]} pointerEvents={planta ? 'auto' : 'none'}>
           <Text style={styles.sectionTitle}>Número de Parte</Text>
           {idNumeroParte ? (
             <Text style={{ fontSize: 11, color: '#888', marginTop: 2, marginBottom: 4 }}>
               Id: {idNumeroParte}
             </Text>
           ) : null}
-          <View style={styles.row2}>
-            <View style={styles.halfField}>
-              <Text style={styles.label}>Número de Parte *</Text>
+          <View style={{ marginBottom: 14 }}>
+            <Text style={styles.label}>Número de Parte *</Text>
+            <View style={styles.scanInputRow}>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { flex: 1 }]}
                 value={numeroParte}
                 onChangeText={text => { setNumeroParte(text); setNumeroParteNoMatch(false); }}
                 placeholder="Ingresa y presiona Enter"
                 returnKeyType="next"
-                onSubmitEditing={handleNumeroParteSubmit}
+                onSubmitEditing={() => handleNumeroParteSubmit()}
               />
+              <TouchableOpacity
+                style={styles.scanButton}
+                onPress={() => setShowScanner(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.scanButtonText}>📷 Escanear</Text>
+              </TouchableOpacity>
             </View>
           </View>
           <View style={styles.row2}>
@@ -1132,10 +1112,7 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
                 {/* Encabezado */}
                 <View style={styles.tableHeader}>
                   <View style={styles.tableColCheck} />
-                  {(isNumeroParteTable
-                    ? ['Línea', 'Número de Parte', 'Material', 'Calibre']
-                    : ['Línea', 'Ensamble', 'Componente', 'Cantidad', 'Material', 'Calibre']
-                  ).map(h => (
+                  {['Línea', 'Número de Parte', 'Material', 'Calibre', 'Secuencia', 'Balloon', 'Cart', 'Lado'].map(h => (
                     <Text key={h} style={[styles.tableHeaderCell, styles.tableColText]}>{h}</Text>
                   ))}
                 </View>
@@ -1146,42 +1123,50 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
                     style={[
                       styles.tableRow,
                       idx % 2 === 1 && styles.tableRowAlt,
-                      selectedNumeroParteRow === idx && styles.tableRowSelected,
+                      selectedNumeroParteRows.has(idx) && styles.tableRowSelected,
                     ]}
                     onPress={() => {
-                      const rowSourceRaw = row.raw?.Source ?? row.raw?.source;
-                      const rowSource = typeof rowSourceRaw === 'string' ? rowSourceRaw.trim() : '';
-                      setSelectedNumeroParteRow(idx);
-                      setSelectedRowEnsamble(row.ensamble || '');
-                      setSelectedRowComponente(row.componente || '');
-                      setSelectedRowSource(rowSource);
-                      if (row.linea)     setLinea(row.linea);
-                      if (row.id)        setIdNumeroParte(row.id);
-                      if (row.secuencia) setSecuencia(row.secuencia);
-                      if (row.balloon)   setBalloon(row.balloon);
-                      if (row.componente) {
-                        setComponente('');
-                        setTipoReorden('Componente');
-                        setOpenDropdown(null);
-                        void fetchCatalogOptions(GET_COMPONENTES_URL)
-                          .then(opts => setComponenteOptions(opts))
-                          .catch(() => setComponenteOptions([]));
+                      const newSelected = new Set(selectedNumeroParteRows);
+                      const wasSelected = newSelected.has(idx);
+                      if (wasSelected) {
+                        newSelected.delete(idx);
+                      } else {
+                        newSelected.add(idx);
+                        // Actualizar campos del contexto con la última fila agregada
+                        const rowSourceRaw = row.raw?.Source ?? row.raw?.source;
+                        const rowSource = typeof rowSourceRaw === 'string' ? rowSourceRaw.trim() : '';
+                        setSelectedRowEnsamble(row.ensamble || '');
+                        setSelectedRowComponente(row.componente || '');
+                        setSelectedRowSource(rowSource);
+                        if (row.linea) setLinea(row.linea);
+                        if (row.id)    setIdNumeroParte(row.id);
+                        if (row.componente) {
+                          setComponente('');
+                          setTipoReorden('Componente');
+                          setOpenDropdown(null);
+                          void fetchCatalogOptions(GET_COMPONENTES_URL)
+                            .then(opts => setComponenteOptions(opts))
+                            .catch(() => setComponenteOptions([]));
+                        }
+                        if (row.cantidad)   setCantidad(row.cantidad);
+                        setSelectedMaterial(row.material || '');
+                        setCalibreNP(row.calibre || '');
                       }
-                      if (row.cantidad)   setCantidad(row.cantidad);
-                      setSelectedMaterial(row.material || '');
-                      setCalibreNP(row.calibre || '');
+                      setSelectedNumeroParteRows(newSelected);
+                      // Secuencia y Balloon: concatenar valores de todas las filas seleccionadas
+                      const allRows = [...newSelected].map(i => numeroParteRows[i]);
+                      setSecuencia(allRows.map(r => r.secuencia || '').filter(Boolean).join(', '));
+                      setBalloon(allRows.map(r => r.balloon || '').filter(Boolean).join(', '));
                     }}
                     activeOpacity={0.75}
                   >
                     <View style={styles.tableColCheck}>
-                      <View style={[styles.checkbox, selectedNumeroParteRow === idx && styles.checkboxChecked]}>
-                        {selectedNumeroParteRow === idx ? <Text style={styles.checkboxMark}>✓</Text> : null}
+                      <View style={[styles.checkbox, selectedNumeroParteRows.has(idx) && styles.checkboxChecked]}>
+                        {selectedNumeroParteRows.has(idx) ? <Text style={styles.checkboxMark}>✓</Text> : null}
                       </View>
                     </View>
-                    {(isNumeroParteTable
-                      ? [row.linea, row.ensamble, row.material, row.calibre]
-                      : [row.linea, row.ensamble, row.componente, row.cantidad, row.material, row.calibre]
-                    ).map((val, ci) => (
+                    {[row.linea, row.ensamble, row.material, row.calibre, row.secuencia, row.balloon, row.cart, row.lado
+                    ].map((val, ci) => (
                       <Text key={ci} style={[styles.tableCellText, styles.tableColText]}>{val || 'N/A'}</Text>
                     ))}
                   </TouchableOpacity>
@@ -1191,8 +1176,67 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
           </View>
         )}
 
+        {/* ── Tarjeta: Proceso ── */}
+        <View style={[styles.card, { zIndex: 30, opacity: planta ? 1 : 0.45 }]} pointerEvents={planta ? 'auto' : 'none'}>
+          <Text style={styles.sectionTitle}>Proceso</Text>
+          <View style={styles.checksRow}>
+            <CheckOption
+              label="Semana"
+              value={isSemanaChecked}
+              onToggle={() => setIsSemanaChecked(prev => !prev)}
+            />
+            <TextInput
+              style={[styles.input, styles.weekInput, !isSemanaChecked && styles.disabledInput]}
+              value={semana}
+              onChangeText={text => setSemana(text.replace(/\D/g, ''))}
+              placeholder={isSemanaChecked ? '' : 'Ej: 42'}
+              editable={isSemanaChecked}
+              keyboardType="number-pad"
+            />
+          </View>
+          <View style={styles.checksRow}>
+            <CheckOption
+              label="Panel Completo"
+              value={panelCompleto}
+              onToggle={() => handleExclusiveProcessToggle('panelCompleto')}
+            />
+            <CheckOption
+              label="Disparo"
+              value={disparo}
+              onToggle={() => handleExclusiveProcessToggle('disparo')}
+            />
+            <CheckOption
+              label="Lrt"
+              value={lrt}
+              onToggle={() => handleExclusiveProcessToggle('lrt')}
+            />
+            <CheckOption
+              label="Manual"
+              value={manual}
+              onToggle={() => handleExclusiveProcessToggle('manual')}
+            />
+            <CheckOption
+              label="Kanban"
+              value={kanban}
+              onToggle={() => handleExclusiveProcessToggle('kanban')}
+            />
+          </View>
+          <View style={styles.checksRow}>
+            <CheckOption
+              label="Revision con ingenieria"
+              value={revisionIngenieria}
+              onToggle={() => setRevisionIngenieria(prev => !prev)}
+            />
+            <CheckOption
+              label="No PPM"
+              value={noPpm}
+              onToggle={() => setNoPpm(prev => !prev)}
+            />
+          </View>
+        </View>
+
         {/* ── Tarjeta: Detalles del defecto ── */}
-        <View style={[styles.card, { zIndex: 20 }]}>
+        <View style={[styles.card, { zIndex: 20, opacity: planta ? 1 : 0.45 }]} pointerEvents={planta ? 'auto' : 'none'}>
           <Text style={styles.sectionTitle}>Detalles del defecto</Text>
 
           <View style={styles.row2}>
@@ -1318,7 +1362,7 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
         </View>
 
         {/* ── Tarjeta: Comentarios ── */}
-        <View style={[styles.card, { zIndex: 10 }]}>
+        <View style={[styles.card, { zIndex: 10, opacity: planta ? 1 : 0.45 }]} pointerEvents={planta ? 'auto' : 'none'}>
           <Text style={styles.sectionTitle}>Comentarios</Text>
 
           <View style={styles.row2}>
@@ -1334,7 +1378,7 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
               </TouchableOpacity>
             </View>
             <View style={styles.halfField}>
-              <Text style={styles.label}>Empleado *</Text>
+              <Text style={styles.label}>Empleado</Text>
               <TextInput style={styles.input} value={empleado} onChangeText={setEmpleado} />
             </View>
           </View>
@@ -1520,6 +1564,19 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
         </SafeAreaView>
       </Modal>
 
+      {showScanner && (
+        <BarcodeScannerModal
+          visible={showScanner}
+          onScan={value => {
+            setShowScanner(false);
+            setNumeroParte(value);
+            setNumeroParteNoMatch(false);
+            void handleNumeroParteSubmit(value);
+          }}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
+
     </SafeAreaView>
   );
 }
@@ -1641,6 +1698,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#4A5568',
     marginBottom: 6,
+  },
+  animatedPlantaInner: {
+    flex: 1,
+    height: '100%',
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    borderRadius: 10,
   },
   input: {
     borderWidth: 1.5,
@@ -1830,6 +1894,28 @@ const styles = StyleSheet.create({
   tableCellText: {
     fontSize: 14,
     color: '#4A5568',
+  },
+
+  /* ── Escanear código de barras ── */
+  scanInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  scanButton: {
+    backgroundColor: '#2B6CB0',
+    paddingHorizontal: 18,
+    paddingVertical: 0,
+    height: 48,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  scanButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
   },
 
   /* ── Botón Guardar ── */

@@ -1,4 +1,4 @@
-{
+﻿{
   "bridges": [
     {
       "id": "embarques",
@@ -11,7 +11,7 @@
       "id": "calidad",
       "name": "DYMO LabelWriter 550 Calidad",
       "port": 3011,
-      "location": "192.168.16.224",
+      "location": "192.168.17.20",
       "description": "Impresora para QA y control de calidad"
     },
     {
@@ -19,14 +19,14 @@
       "name": "DYMO LabelWriter 550 Expansion",
       "port": 3012,
       "location": "192.168.16.230",
-      "description": "Impresora para expansión"
+      "description": "Impresora para expansion"
     },
     {
       "id": "metalicas",
-      "name": "DYMO Partes Metálicas",
+      "name": "DYMO Partes Metalicas",
       "port": 3013,
       "location": "192.168.1.103",
-      "description": "Impresora para piezas metálicas"
+      "description": "Impresora para piezas metalicas"
     }
   ]
 }

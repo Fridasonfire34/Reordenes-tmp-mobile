@@ -28,6 +28,55 @@ app.use(express.json({ limit: '1mb' }));
 const mmToPt = (mm) => (mm * 72) / 25.4;
 const toText = (value) => (value == null ? '' : String(value).trim());
 
+const normalizePrinterName = (value) => toText(value).toUpperCase();
+
+const resolvePrinterName = (printers, requestedPrinter, fallbackPrinter) => {
+  const normalizedRequested = normalizePrinterName(requestedPrinter);
+  const normalizedFallback = normalizePrinterName(fallbackPrinter);
+
+  const normalizedPrinters = printers
+    .map((printer) => {
+      const name = normalizePrinterName(printer?.name || printer?.deviceId);
+      return name ? { original: printer, name } : null;
+    })
+    .filter(Boolean);
+
+  const byExactRequested = normalizedPrinters.find((p) => p.name === normalizedRequested);
+  if (byExactRequested) {
+    return { selected: byExactRequested.name, reason: 'exact-requested' };
+  }
+
+  const byExactFallback = normalizedPrinters.find((p) => p.name === normalizedFallback);
+  if (byExactFallback) {
+    return { selected: byExactFallback.name, reason: 'exact-default' };
+  }
+
+  const byContainsRequested = normalizedRequested
+    ? normalizedPrinters.find((p) => p.name.includes(normalizedRequested))
+    : null;
+  if (byContainsRequested) {
+    return { selected: byContainsRequested.name, reason: 'contains-requested' };
+  }
+
+  const byContainsFallback = normalizedFallback
+    ? normalizedPrinters.find((p) => p.name.includes(normalizedFallback))
+    : null;
+  if (byContainsFallback) {
+    return { selected: byContainsFallback.name, reason: 'contains-default' };
+  }
+
+  const dymoPrinter = normalizedPrinters.find((p) => p.name.includes('DYMO'));
+  if (dymoPrinter) {
+    return { selected: dymoPrinter.name, reason: 'dymo-fallback' };
+  }
+
+  if (normalizedPrinters.length === 1) {
+    return { selected: normalizedPrinters[0].name, reason: 'single-printer-fallback' };
+  }
+
+  return { selected: '', reason: 'not-found' };
+};
+
 const normalizeLabel = (label) => ({
   folio: toText(label?.folio),
   fecha: toText(label?.fecha),
@@ -135,8 +184,7 @@ app.get('/api/rdm/printers', async (_req, res) => {
 app.post('/api/rdm/print', async (req, res) => {
   const labels = Array.isArray(req.body?.labels) ? req.body.labels.map(normalizeLabel) : [];
   const labelPreset = toText(req.body?.labelPreset || DEFAULT_PRESET).toLowerCase();
-  const requestedPrinter = toText(req.body?.printerName).toUpperCase();
-  const printerName = requestedPrinter || DEFAULT_PRINTER;
+  const requestedPrinter = toText(req.body?.printerName);
 
   if (labels.length === 0) {
     res.status(400).json({ message: 'labels no puede ir vacio.' });
@@ -145,12 +193,28 @@ app.post('/api/rdm/print', async (req, res) => {
 
   try {
     const printers = await getPrinters();
-    const printerNames = printers.map((p) => (p.deviceId || p.name || '').toString().toUpperCase()).filter(Boolean);
-    const printerExists = printerNames.some((name) => name === printerName);
+    const printerNames = printers.map((p) => normalizePrinterName(p.deviceId || p.name)).filter(Boolean);
+    const { selected: printerName, reason: printerSelectionReason } = resolvePrinterName(
+      printers,
+      requestedPrinter,
+      DEFAULT_PRINTER,
+    );
 
-    if (!printerExists) {
+    console.log('[print] request', {
+      labels: labels.length,
+      requestedPrinter: normalizePrinterName(requestedPrinter),
+      defaultPrinter: DEFAULT_PRINTER,
+      availablePrinters: printerNames,
+      selectedPrinter: printerName,
+      selectionReason: printerSelectionReason,
+      bridge: `${BRIDGE_NAME} (${BRIDGE_LOCATION}:${PORT})`,
+    });
+
+    if (!printerName) {
       res.status(404).json({
-        message: `No se encontro la impresora ${printerName}.`,
+        message: `No se encontro una impresora valida para imprimir.`,
+        requestedPrinter: normalizePrinterName(requestedPrinter),
+        defaultPrinter: DEFAULT_PRINTER,
         availablePrinters: printerNames,
       });
       return;
@@ -172,12 +236,30 @@ app.post('/api/rdm/print', async (req, res) => {
           copies: 1,
         });
         printed += 1;
+        console.log('[print] label sent', {
+          folio: label.folio,
+          parte: label.parte,
+          printerName,
+          printed,
+        });
       } finally {
         fs.promises.unlink(tempPdfPath).catch(() => {});
       }
     }
 
-    res.json({ ok: true, printed, printerName, labelPreset });
+    res.json({
+      ok: true,
+      printed,
+      printerName,
+      requestedPrinter: normalizePrinterName(requestedPrinter),
+      labelPreset,
+      bridge: {
+        name: BRIDGE_NAME,
+        location: BRIDGE_LOCATION,
+        port: PORT,
+      },
+      printerSelectionReason,
+    });
   } catch (error) {
     res.status(500).json({
       message: 'No fue posible imprimir en DYMO.',

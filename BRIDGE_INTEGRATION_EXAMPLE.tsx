@@ -1,6 +1,3 @@
-// EJEMPLO DE INTEGRACIÓN EN NuevaReordenScreen.tsx
-// Este archivo muestra cómo integrar el selector de bridges
-
 import React, { useState } from 'react';
 import { View, TouchableOpacity, Text, Alert, ActivityIndicator } from 'react-native';
 import { BridgeSelectorModal } from '../components/BridgeSelectorModal';
@@ -23,16 +20,12 @@ interface Label {
   defecto?: string;
   cantidad: string;
 }
-
-// USO EN TU PANTALLA DE REORDEN:
-
 export const NuevaReordenScreenWithBridgeSelector = () => {
   const [selectorVisible, setSelectorVisible] = useState(false);
   const [selectedBridge, setSelectedBridge] = useState<Bridge | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
 
   const handleEnviarADymo = async () => {
-    // 1. Mostrar selector de impresoras
     setSelectorVisible(true);
   };
 
@@ -40,7 +33,6 @@ export const NuevaReordenScreenWithBridgeSelector = () => {
     setSelectedBridge(bridge);
     setSelectorVisible(false);
 
-    // 2. Proceder con la impresión
     await printToSelectedBridge(bridge);
   };
 
@@ -48,7 +40,6 @@ export const NuevaReordenScreenWithBridgeSelector = () => {
     try {
       setIsPrinting(true);
 
-      // Preparar datos de etiqueta (ejemplo)
       const labels: Label[] = [
         {
           folio: 'RDM-2024-001',
@@ -61,7 +52,6 @@ export const NuevaReordenScreenWithBridgeSelector = () => {
         },
       ];
 
-      // 3. Enviar a la impresora específica
       const bridgeUrl = getBridgeUrl(bridge.location, bridge.port);
       const response = await fetch(`${bridgeUrl}/api/rdm/print`, {
         method: 'POST',
@@ -71,7 +61,7 @@ export const NuevaReordenScreenWithBridgeSelector = () => {
         body: JSON.stringify({
           labels: labels,
           labelPreset: '100x212',
-          printerName: 'DYMO LABELWRITER 550', // O el nombre de tu impresora
+          printerName: 'DYMO LABELWRITER 550',
         }),
       });
 

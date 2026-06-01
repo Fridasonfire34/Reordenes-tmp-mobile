@@ -34,6 +34,7 @@ type ReordenRow = {
   comentarios: string;
   estatus: string;
   fecha: string;
+  fechaSortMs: number;
 };
 
 type PrintLabelData = {
@@ -44,6 +45,27 @@ type PrintLabelData = {
   secuencia: string;
   defecto: string;
   cantidad: string;
+};
+
+type BridgeInfoResponse = {
+  name?: string;
+  port?: number;
+  location?: string;
+  printer?: string;
+  preset?: string;
+};
+
+type PrintResponse = {
+  ok?: boolean;
+  printed?: number;
+  printerName?: string;
+  message?: string;
+  details?: string;
+  bridge?: {
+    name?: string;
+    location?: string;
+    port?: number;
+  };
 };
 
 const TARGET_STATUS = 'Pendiente por Programacion';
@@ -66,6 +88,66 @@ const toNormalized = (value: string): string =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
+
+const formatDateField = (raw: string): string => {
+  if (!raw) return '';
+  // Si parece ISO 8601 (ej: 2026-05-14T10:30:00.000Z o 2026-05-14 10:30:00)
+  if (/^\d{4}-\d{2}-\d{2}[T ]/.test(raw)) {
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) {
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yyyy = d.getFullYear();
+      const hh = d.getHours();
+      const min = String(d.getMinutes()).padStart(2, '0');
+      const ampm = hh >= 12 ? 'PM' : 'AM';
+      const h12 = hh % 12 || 12;
+      return `${dd}/${mm}/${yyyy} ${h12}:${min} ${ampm}`;
+    }
+  }
+  return raw;
+};
+
+const toSortTimestamp = (rawDate: string): number => {
+  if (!rawDate) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}[T ]/.test(rawDate)) {
+    const isoDate = new Date(rawDate);
+    if (!Number.isNaN(isoDate.getTime())) {
+      return isoDate.getTime();
+    }
+  }
+
+  const match = rawDate.match(
+    /^(\d{2})\/(\d{2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i,
+  );
+
+  if (match) {
+    const [, dd, mm, yyyyOrYY, hhText, minText, ampmText] = match;
+    const year = yyyyOrYY.length === 2 ? Number(`20${yyyyOrYY}`) : Number(yyyyOrYY);
+    let hour = Number(hhText);
+    const minute = Number(minText);
+
+    if (ampmText) {
+      const ampm = ampmText.toUpperCase();
+      if (ampm === 'PM' && hour < 12) {
+        hour += 12;
+      }
+      if (ampm === 'AM' && hour === 12) {
+        hour = 0;
+      }
+    }
+
+    const parsed = new Date(year, Number(mm) - 1, Number(dd), hour, minute);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.getTime();
+    }
+  }
+
+  return Number.MAX_SAFE_INTEGER;
+};
 
 const extractRows = (payload: unknown): unknown[] => {
   if (Array.isArray(payload)) {
@@ -142,6 +224,15 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
         .filter(item => item && typeof item === 'object')
         .map(item => {
           const r = item as Record<string, unknown>;
+          const rawFecha = pickText(r, [
+            'Fecha y Hora',
+            'fecha', 'Fecha', 'FechaHora', 'fechaHora',
+            'captureDateTime', 'CaptureDateTime', 'capture_date_time',
+            'fechaCaptura', 'FechaCaptura', 'fecha_captura',
+            'createdAt', 'created_at', 'CreatedAt',
+            'date', 'Date', 'datetime', 'DateTime', 'timestamp', 'Timestamp',
+          ]);
+
           return {
             folio: pickText(r, ['folio', 'Folio', 'id', 'ID']),
             linea: pickText(r, ['linea', 'Linea', 'Línea']),
@@ -156,7 +247,8 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
             cantidad: pickText(r, ['cantidad', 'Cantidad']),
             comentarios: pickText(r, ['comentarios', 'Comentarios', 'comentario', 'Comentario']),
             estatus: pickText(r, ['estatus', 'Estatus', 'status', 'Status']),
-            fecha: pickText(r, ['fecha', 'Fecha', 'captureDateTime', 'createdAt']),
+            fecha: formatDateField(rawFecha),
+            fechaSortMs: toSortTimestamp(rawFecha),
           } as ReordenRow;
         });
 
@@ -179,7 +271,9 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
 
   const filteredRows = useMemo(() => {
     const target = toNormalized(TARGET_STATUS);
-    return rows.filter(row => toNormalized(row.estatus) === target);
+    return rows
+      .filter(row => toNormalized(row.estatus) === target)
+      .sort((a, b) => a.fechaSortMs - b.fechaSortMs);
   }, [rows]);
 
   const selectedRow =
@@ -348,21 +442,47 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
         ? `${getBridgeUrl(bridge.location, bridge.port)}/api/rdm/print`
         : DYMO_PRINT_API_URL;
 
+      let explicitPrinterName = '';
+      if (bridge) {
+        const bridgeInfoUrl = `${getBridgeUrl(bridge.location, bridge.port)}/api/rdm/info`;
+        const bridgeInfoResponse = await fetch(bridgeInfoUrl, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (bridgeInfoResponse.ok) {
+          const bridgeInfo = (await bridgeInfoResponse.json().catch(() => null)) as BridgeInfoResponse | null;
+          explicitPrinterName = toText(bridgeInfo?.printer);
+        }
+      }
+
       const response = await fetch(targetPrintUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           labels,
           labelPreset: DYMO_LABEL_PRESET,
+          ...(explicitPrinterName ? { printerName: explicitPrinterName } : {}),
         }),
       });
 
+      const payload = (await response.json().catch(() => null)) as PrintResponse | null;
+
       if (!response.ok) {
-        const responseText = await response.text();
-        throw new Error(responseText || `Error ${response.status} al enviar a DYMO.`);
+        const serverMessage =
+          toText(payload?.message) || toText(payload?.details) || `Error ${response.status} al enviar a DYMO.`;
+        throw new Error(serverMessage);
       }
 
-      Alert.alert('Listo', 'Se enviaron las etiquetas a la impresora DYMO.', [
+      const printed = typeof payload?.printed === 'number' ? payload.printed : 0;
+      if (printed <= 0) {
+        throw new Error('El bridge respondio OK, pero no confirmo etiquetas impresas.');
+      }
+
+      const bridgeLabel = payload?.bridge?.name || bridge?.name || 'Bridge desconocido';
+      const printerLabel = payload?.printerName || explicitPrinterName || 'Impresora no especificada';
+
+      Alert.alert('Listo', `Impresas: ${printed}\nBridge: ${bridgeLabel}\nImpresora: ${printerLabel}`, [
         {
           text: 'OK',
           onPress: () => {
@@ -424,7 +544,7 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
               <Text style={[styles.th, styles.colMaquina]}>Maquina</Text>
               <Text style={[styles.th, styles.colCantidad]}>Cantidad</Text>
               <Text style={[styles.th, styles.colComentarios]}>Comentarios</Text>
-              <Text style={[styles.th, styles.colFechaHora]}>Fecha y Hora</Text>
+              <Text style={[styles.th, styles.colFechaHora]}>Fecha y Hora de Captura</Text>
             </View>
             <ScrollView style={styles.rowsScroll}>
               {filteredRows.map((row, index) => (
