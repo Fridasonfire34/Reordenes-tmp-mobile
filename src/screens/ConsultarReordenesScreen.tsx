@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -24,9 +25,12 @@ type ReordenRow = {
   linea: string;
   ensamble: string;
   numeroParte: string;
+  numeroPartePrograma: string;
   secuencia: string;
-  material: string;
-  calibre: string;
+  materialint: string;
+  calibreint: string;
+  materialext: string;
+  calibreext: string;
   defecto: string;
   causa: string;
   maquina: string;
@@ -35,6 +39,15 @@ type ReordenRow = {
   estatus: string;
   fecha: string;
   fechaSortMs: number;
+  area: string;
+  subArea: string;
+  balloon: string;
+  programa: string;
+  tipoReorden: string;
+  componente: string;
+  turno: string;
+  empleado: string;
+  planta: string;
 };
 
 type PrintLabelData = {
@@ -42,6 +55,8 @@ type PrintLabelData = {
   fecha: string;
   ensamble: string;
   parte: string;
+  programa: string;
+  porPrograma: boolean;
   secuencia: string;
   defecto: string;
   cantidad: string;
@@ -70,7 +85,18 @@ type PrintResponse = {
 
 const TARGET_STATUS = 'Pendiente por Programacion';
 
+const getRowBgColor = (estatus: string): string | undefined => {
+  const s = estatus.toLowerCase();
+  if (s.includes('pendiente por programacion')) return '#ffb151'; // light orange
+  if (s.includes('pendiente por ingenieria'))  return '#fff175'; // light yellow
+  if (s.includes('completo'))                  return '#78a783'; // light green
+  if (s.includes('cancelado'))                 return '#ff6978'; // light red
+  if (s.includes('no reprocesar'))             return '#8fb1d4'; // light blue
+  return undefined;
+};
+
 const GET_REORDENES_URL = API_ENDPOINTS.reorders;
+const GET_REORDENES_PENDIENTES_URL = API_ENDPOINTS.reordersPendientes;
 const DYMO_PRINT_API_URL = DYMO_ENDPOINTS.print;
 const DYMO_LABEL_PRESET = '100x212';
 
@@ -198,14 +224,16 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
   const [isSendingToDymo, setIsSendingToDymo] = useState(false);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [showBridgeSelector, setShowBridgeSelector] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [printLabelData, setPrintLabelData] = useState<PrintLabelData | null>(null);
   const [previewHtml, setPreviewHtml] = useState('');
   const [selectedBridgeName, setSelectedBridgeName] = useState('');
+  const [activeFilter, setActiveFilter] = useState<'recientes' | 'pendientes'>('recientes');
 
-  const fetchReordenes = useCallback(async () => {
+  const fetchReordenes = useCallback(async (url: string = GET_REORDENES_URL) => {
     setLoading(true);
     try {
-      const response = await fetch(GET_REORDENES_URL, {
+      const response = await fetch(url, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -238,9 +266,15 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
             linea: pickText(r, ['linea', 'Linea', 'Línea']),
             ensamble: pickText(r, ['ensamble', 'Ensamble']),
             numeroParte: pickText(r, ['numeroParte', 'NumeroParte', 'numero_parte', 'Parte', 'Numero de Parte']),
+            numeroPartePrograma: [
+              pickText(r, ['numeroParte', 'NumeroParte', 'numero_parte', 'Parte', 'Numero de Parte']),
+              pickText(r, ['programa', 'Programa', 'program', 'Program']),
+            ].filter(Boolean).join(' / '),
             secuencia: pickText(r, ['secuencia', 'Secuencia', 'sequence', 'Sequence']),
-            material: pickText(r, ['material', 'Material']),
-            calibre: pickText(r, ['calibre', 'Calibre']),
+            materialint: pickText(r, ['Material Interno', 'materialint', 'MaterialInt', 'material_interno', 'MaterialInterno']),
+            calibreint: pickText(r, ['Calibre Interno', 'calibreint', 'CalibreInt', 'calibre_interno', 'CalibreInterno']),
+            materialext: pickText(r, ['Material Externo', 'materialext', 'MaterialExt', 'material_externo', 'MaterialExterno']),
+            calibreext: pickText(r, ['Calibre Externo', 'calibreext', 'CalibreExt', 'calibre_externo', 'CalibreExterno']),
             defecto: pickText(r, ['defecto', 'Defecto']),
             causa: pickText(r, ['causa', 'Causa']),
             maquina: pickText(r, ['maquina', 'Maquina', 'Máquina']),
@@ -249,6 +283,15 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
             estatus: pickText(r, ['estatus', 'Estatus', 'status', 'Status']),
             fecha: formatDateField(rawFecha),
             fechaSortMs: toSortTimestamp(rawFecha),
+            area: pickText(r, ['area', 'Area', 'Área']),
+            subArea: pickText(r, ['Sub Area', 'subArea', 'SubArea', 'sub_area', 'SubArea']),
+            balloon: pickText(r, ['Balloon Number', 'balloon', 'Balloon', 'balloonNumber', 'BalloonNumber', 'balloon_number']),
+            programa: pickText(r, ['programa', 'Programa', 'program', 'Program']),
+            tipoReorden: pickText(r, ['Tipo Reorden', 'tipoReorden', 'TipoReorden', 'tipo_reorden', 'Tipo']),
+            componente: pickText(r, ['componente', 'Componente', 'componentes', 'Componentes']),
+            turno: pickText(r, ['turno', 'Turno', 'shift', 'Shift']),
+            empleado: pickText(r, ['empleado', 'Empleado', 'employee', 'Employee', 'Usuario', 'usuario']),
+            planta: pickText(r, ['planta', 'Planta', 'plant', 'Plant']),
           } as ReordenRow;
         });
 
@@ -269,12 +312,30 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
     void fetchReordenes();
   }, [fetchReordenes]);
 
+  const [searchQuery, setSearchQuery] = useState('');
+
   const filteredRows = useMemo(() => {
-    const target = toNormalized(TARGET_STATUS);
+    const q = searchQuery.trim().toLowerCase();
     return rows
-      .filter(row => toNormalized(row.estatus) === target)
-      .sort((a, b) => a.fechaSortMs - b.fechaSortMs);
-  }, [rows]);
+      .filter(row => {
+        if (!q) return true;
+        return (
+          row.folio.toLowerCase().includes(q) ||
+          row.linea.toLowerCase().includes(q) ||
+          row.ensamble.toLowerCase().includes(q) ||
+          row.numeroParte.toLowerCase().includes(q) ||
+          row.numeroPartePrograma.toLowerCase().includes(q) ||
+          row.secuencia.toLowerCase().includes(q) ||
+          row.defecto.toLowerCase().includes(q) ||
+          row.causa.toLowerCase().includes(q) ||
+          row.maquina.toLowerCase().includes(q) ||
+          row.estatus.toLowerCase().includes(q) ||
+          row.materialint.toLowerCase().includes(q) ||
+          row.materialext.toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => b.fechaSortMs - a.fechaSortMs);
+  }, [rows, searchQuery]);
 
   const selectedRow =
     selectedRowIndex != null && selectedRowIndex >= 0 && selectedRowIndex < filteredRows.length
@@ -287,10 +348,115 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
       fecha: escapeHtml(d.fecha),
       ensamble: escapeHtml(d.ensamble),
       parte: escapeHtml(d.parte),
+      programa: escapeHtml(d.programa),
       secuencia: escapeHtml(d.secuencia),
       defecto: escapeHtml(d.defecto),
       cantidad: escapeHtml(d.cantidad),
     };
+
+    const splitProgram = (value: string): [string, string] => {
+      if (value.length <= 20) return [value, ''];
+      return [value.slice(0, 20), value.slice(20)];
+    };
+
+    const [programLine1, programLine2] = splitProgram(safe.programa);
+
+    if (d.porPrograma) {
+      const continuation = programLine2 ? `<p class="programContinuation">${programLine2}</p>` : '';
+      return `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <style>
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Arial, sans-serif;
+              background: #e6e7e9;
+              padding: 16px;
+              color: #000000;
+            }
+            .title {
+              text-align: center;
+              font-weight: 700;
+              color: #1b7d31;
+              margin: 0 0 12px 0;
+            }
+            .grid {
+              display: grid;
+              grid-template-columns: repeat(2, minmax(250px, 1fr));
+              gap: 12px;
+            }
+            .sheet {
+              background: #f8f8f8;
+              border: 1px solid #d1d5db;
+              padding: 10px;
+              min-height: 150px;
+            }
+            .sheet h4 {
+              margin: 0 0 6px 0;
+              font-size: 15px;
+              text-transform: uppercase;
+            }
+            .sheet p {
+              margin: 0 0 7px 0;
+              font-size: 12px;
+              line-height: 1.35;
+            }
+            .sheet span { color: #374151; }
+            .sheet b { color: #111827; }
+            .split {
+              display: flex;
+              justify-content: flex-start;
+              gap: 18px;
+              align-items: baseline;
+              flex-wrap: wrap;
+            }
+            .programContinuation {
+              margin-top: -2px;
+              margin-bottom: 7px;
+              font-size: 11px;
+              font-weight: 600;
+              letter-spacing: 0.02em;
+            }
+            .programFooter {
+              margin-top: 10px;
+              font-size: 11px;
+              color: #0b57d0;
+            }
+            @media (max-width: 700px) {
+              .grid { grid-template-columns: 1fr; }
+            }
+          </style>
+        </head>
+        <body>
+          <h3 class="title">Vista previa de impresion</h3>
+          <section class="grid">
+            <article class="sheet">
+              <h4>Reorden: ${safe.folio}</h4>
+              <p><span>Fecha:</span> <b>${safe.fecha}</b></p>
+              <p><span>Programa:</span> <b>${programLine1}</b></p>
+              ${continuation}
+              <p><span>Secuencia:</span> <b>Varias</b></p>
+              <p class="split"><span>Defecto: <b>${safe.defecto}</b></span><span>Cantidad: <b>${safe.cantidad}</b></span></p>
+              <p class="programFooter"><b>*PROGRAMA COMPLETO*</b></p>
+            </article>
+            <article class="sheet">
+              <h4>Reorden: ${safe.folio}</h4>
+              <p><span>Fecha:</span> <b>${safe.fecha}</b></p>
+              <p><span>Programa:</span> <b>${programLine1}</b></p>
+              ${continuation}
+              <p><span>Secuencia:</span> <b>Varias</b></p>
+              <p class="split"><span>Defecto: <b>${safe.defecto}</b></span><span>Cantidad: <b>${safe.cantidad}</b></span></p>
+              <p class="programFooter"><b>*PROGRAMA COMPLETO*</b></p>
+            </article>
+          </section>
+        </body>
+      </html>
+      `;
+    }
 
     const hasEnsamble = !!d.ensamble;
     const hasSecuencia = !!d.secuencia && d.secuencia !== '--' && d.secuencia !== 'N/A';
@@ -298,8 +464,8 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
     let bodyRows = '';
     if (!hasSecuencia && hasEnsamble) {
       bodyRows = `
-        <p><span>Folio Reorden:</span> <b>${safe.folio}</b></p>
-        <p><span>Fecha y Hora:</span> <b>${safe.fecha}</b></p>
+        <p><span>Reorden:</span> <b>${safe.folio}</b></p>
+        <p><span>Fecha:</span> <b>${safe.fecha}</b></p>
         <p><span>Ensamble:</span> <b>${safe.ensamble}</b></p>
         <p><span>Parte:</span> <b>${safe.parte}</b></p>
         <p class="split"><span>Secuencia: <b>--</b></span><span>Defecto: <b>${safe.defecto}</b></span></p>
@@ -307,8 +473,8 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
       `;
     } else if (hasSecuencia && !hasEnsamble) {
       bodyRows = `
-        <p><span>Folio Reorden:</span> <b>${safe.folio}</b></p>
-        <p><span>Fecha y Hora:</span> <b>${safe.fecha}</b></p>
+        <p><span>Reorden:</span> <b>${safe.folio}</b></p>
+        <p><span>Fecha:</span> <b>${safe.fecha}</b></p>
         <p><span>Parte:</span> <b>${safe.parte}</b></p>
         <p><span>Secuencia:</span> <b>${safe.secuencia}</b></p>
         <p><span>Defecto:</span> <b>${safe.defecto}</b></p>
@@ -316,8 +482,8 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
       `;
     } else {
       bodyRows = `
-        <p><span>Folio Reorden:</span> <b>${safe.folio}</b></p>
-        <p><span>Fecha y Hora:</span> <b>${safe.fecha}</b></p>
+        <p><span>Reorden:</span> <b>${safe.folio}</b></p>
+        <p><span>Fecha:</span> <b>${safe.fecha}</b></p>
         ${hasEnsamble ? `<p><span>Ensamble:</span> <b>${safe.ensamble}</b></p>` : ''}
         <p><span>Parte:</span> <b>${safe.parte}</b></p>
         <p><span>Secuencia:</span> <b>${safe.secuencia}</b></p>
@@ -340,7 +506,7 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
               font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Arial, sans-serif;
               background: #e6e7e9;
               padding: 16px;
-              color: #1f2937;
+              color: #000000;
             }
             .title {
               text-align: center;
@@ -391,9 +557,12 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
       return;
     }
 
-    const normalizedPart = selectedRow.numeroParte.trim().toUpperCase();
+    const programaValue = selectedRow.programa.trim();
+    const numeroParteValue = selectedRow.numeroParte.trim();
+    const porPrograma = programaValue.length > 0;
+    const normalizedPart = porPrograma ? programaValue.toUpperCase() : numeroParteValue.toUpperCase();
     if (!normalizedPart) {
-      Alert.alert('Sin datos', 'La fila seleccionada no tiene Numero de Parte valido.');
+      Alert.alert('Sin datos', porPrograma ? 'La fila seleccionada no tiene Programa valido.' : 'La fila seleccionada no tiene Numero de Parte valido.');
       return;
     }
 
@@ -411,8 +580,10 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
       folio: selectedRow.folio || '',
       fecha,
       ensamble: selectedRow.ensamble || '',
-      parte: normalizedPart,
-      secuencia: selectedRow.secuencia || '--',
+      parte: porPrograma ? '' : normalizedPart,
+      programa: porPrograma ? normalizedPart : '',
+      porPrograma,
+      secuencia: porPrograma ? 'Varias' : (selectedRow.secuencia || '--'),
       defecto: selectedRow.defecto || '--',
       cantidad: selectedRow.cantidad || '',
     };
@@ -515,8 +686,38 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
         </TouchableOpacity>
       </View>
 
-      <View style={styles.statusPill}>
-        <Text style={styles.statusPillText}>Mostrando solo: {TARGET_STATUS}</Text>
+      <View style={styles.searchRow}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Buscar..."
+          placeholderTextColor="#9CA3AF"
+          value={searchQuery}
+          onChangeText={text => {
+            setSearchQuery(text);
+            setSelectedRowIndex(null);
+          }}
+          clearButtonMode="while-editing"
+        />
+        <TouchableOpacity
+          style={[styles.filterBtn, activeFilter === 'pendientes' && styles.filterBtnActive]}
+          onPress={() => {
+            setActiveFilter('pendientes');
+            void fetchReordenes(GET_REORDENES_PENDIENTES_URL);
+          }}
+          activeOpacity={0.85}
+        >
+          <Text style={[styles.filterBtnText, activeFilter === 'pendientes' && { color: '#FFFFFF' }]}>Pendientes</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.filterBtn, activeFilter === 'recientes' && styles.filterBtnActive]}
+          onPress={() => {
+            setActiveFilter('recientes');
+            void fetchReordenes();
+          }}
+          activeOpacity={0.85}
+        >
+          <Text style={[styles.filterBtnText, activeFilter === 'recientes' && { color: '#FFFFFF' }]}>Más Recientes</Text>
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -526,19 +727,22 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
         </View>
       ) : filteredRows.length === 0 ? (
         <View style={styles.centeredState}>
-          <Text style={styles.centeredText}>No hay reordenes con estatus {TARGET_STATUS}.</Text>
+          <Text style={styles.centeredText}>No hay reordenes disponibles.</Text>
         </View>
       ) : (
         <ScrollView horizontal contentContainerStyle={styles.tableWrap}>
           <View>
             <View style={styles.tableHeader}>
+              <Text style={[styles.th, styles.colEstatus]}>Estatus</Text>
               <Text style={[styles.th, styles.colFolio]}>Folio</Text>
               <Text style={[styles.th, styles.colLinea]}>Linea</Text>
               <Text style={[styles.th, styles.colEnsamble]}>Ensamble</Text>
-              <Text style={[styles.th, styles.colParte]}>Numero de Parte</Text>
+              <Text style={[styles.th, styles.colParte]}>Numero de Parte/Programa</Text>
               <Text style={[styles.th, styles.colSecuencia]}>Secuencia</Text>
-              <Text style={[styles.th, styles.colMaterial]}>Material</Text>
-              <Text style={[styles.th, styles.colCalibre]}>Calibre</Text>
+              <Text style={[styles.th, styles.colMaterialInt]}>Material Interno</Text>
+              <Text style={[styles.th, styles.colCalibreInt]}>Calibre Interno</Text>
+              <Text style={[styles.th, styles.colMaterialExt]}>Material Externo</Text>
+              <Text style={[styles.th, styles.colCalibreExt]}>Calibre Externo</Text>
               <Text style={[styles.th, styles.colDefecto]}>Defecto</Text>
               <Text style={[styles.th, styles.colCausa]}>Causa</Text>
               <Text style={[styles.th, styles.colMaquina]}>Maquina</Text>
@@ -552,19 +756,23 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
                   key={`${row.folio}-${index}`}
                   style={[
                     styles.tableRow,
-                    index % 2 === 1 && styles.tableRowAlt,
+                    !getRowBgColor(row.estatus) && index % 2 === 1 && styles.tableRowAlt,
+                    getRowBgColor(row.estatus) ? { backgroundColor: getRowBgColor(row.estatus) } : null,
                     selectedRowIndex === index && styles.tableRowSelected,
                   ]}
                   activeOpacity={0.85}
                   onPress={() => setSelectedRowIndex(index)}
                 >
+                  <Text style={[styles.td, styles.colEstatus]}>{row.estatus || '-'}</Text>
                   <Text style={[styles.td, styles.colFolio]}>{row.folio || '-'}</Text>
                   <Text style={[styles.td, styles.colLinea]}>{row.linea || '-'}</Text>
                   <Text style={[styles.td, styles.colEnsamble]}>{row.ensamble || '-'}</Text>
-                  <Text style={[styles.td, styles.colParte]}>{row.numeroParte || '-'}</Text>
+                  <Text style={[styles.td, styles.colParte]}>{row.numeroPartePrograma || row.numeroParte || '-'}</Text>
                   <Text style={[styles.td, styles.colSecuencia]}>{row.secuencia || '-'}</Text>
-                  <Text style={[styles.td, styles.colMaterial]}>{row.material || '-'}</Text>
-                  <Text style={[styles.td, styles.colCalibre]}>{row.calibre || '-'}</Text>
+                  <Text style={[styles.td, styles.colMaterialInt]}>{row.materialint || '-'}</Text>
+                  <Text style={[styles.td, styles.colCalibreInt]}>{row.calibreint || '-'}</Text>
+                  <Text style={[styles.td, styles.colMaterialExt]}>{row.materialext || '-'}</Text>
+                  <Text style={[styles.td, styles.colCalibreExt]}>{row.calibreext || '-'}</Text>
                   <Text style={[styles.td, styles.colDefecto]}>{row.defecto || '-'}</Text>
                   <Text style={[styles.td, styles.colCausa]}>{row.causa || '-'}</Text>
                   <Text style={[styles.td, styles.colMaquina]}>{row.maquina || '-'}</Text>
@@ -580,14 +788,185 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
 
       {selectedRow ? (
         <TouchableOpacity
-          style={[styles.printButton, { marginBottom: 35 }, isSendingToDymo && { opacity: 0.7 }]}
-          onPress={handlePrintSelected}
+          style={[styles.detallesButton, { marginBottom: 30 }]}
+          onPress={() => setShowDetailModal(true)}
           activeOpacity={0.85}
-          disabled={isSendingToDymo}
         >
-          <Text style={styles.printButtonText}>Imprimir reorden</Text>
+          <Text style={styles.printButtonText}>Ver Detalles</Text>
         </TouchableOpacity>
       ) : null}
+
+      {/* Modal detalle de reorden */}
+      <Modal
+        visible={showDetailModal}
+        animationType="slide"
+        onRequestClose={() => setShowDetailModal(false)}
+      >
+        <SafeAreaView style={styles.detailModalSafe}>
+          <View style={styles.detailModalHeader}>
+            <Text style={styles.detailModalTitle}>Detalle de reorden</Text>
+            <TouchableOpacity
+              style={styles.detailModalCloseBtn}
+              onPress={() => setShowDetailModal(false)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.detailModalCloseBtnText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.detailModalBody}>
+            {/* Folio / Fecha / Planta */}
+            <View style={styles.detailTopRow}>
+              <View style={styles.detailTopField}>
+                <Text style={styles.detailFieldLabel}>FOLIO</Text>
+                <Text style={styles.detailFieldValue}>{selectedRow?.folio || '—'}</Text>
+              </View>
+              <View style={[styles.detailTopField, { flex: 2 }]}>
+                <Text style={styles.detailFieldLabel}>FECHA Y HORA</Text>
+                <Text style={styles.detailFieldValue}>{selectedRow?.fecha || '—'}</Text>
+              </View>
+              <View style={styles.detailTopField}>
+                <Text style={styles.detailFieldLabel}>PLANTA</Text>
+                <Text style={styles.detailFieldValue}>{selectedRow?.planta || '—'}</Text>
+              </View>
+            </View>
+
+            {/* PARTE */}
+            <View style={styles.detailSection}>
+              <Text style={styles.detailSectionTitle}>PARTE</Text>
+              <View style={styles.detailFieldRow}>
+                <View style={styles.detailField}>
+                  <Text style={styles.detailFieldLabel}>LINEA</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.linea || '—'}</Text>
+                </View>
+                <View style={[styles.detailField, { flex: 2 }]}>
+                  <Text style={styles.detailFieldLabel}>ENSAMBLE</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.ensamble || '—'}</Text>
+                </View>
+                <View style={[styles.detailField, { flex: 2 }]}>
+                  <Text style={styles.detailFieldLabel}>NUMERO DE PARTE/PROGRAMA</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.numeroPartePrograma || selectedRow?.numeroParte || '—'}</Text>
+                </View>
+              </View>
+              <View style={styles.detailFieldRow}>
+                <View style={[styles.detailField, { flex: 2 }]}>
+                  <Text style={styles.detailFieldLabel}>SECUENCIA</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.secuencia || '—'}</Text>
+                </View>
+                <View style={[styles.detailField, { flex: 2 }]}>
+                  <Text style={styles.detailFieldLabel}>PROGRAMA</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.programa || '—'}</Text>
+                </View>
+                <View style={[styles.detailField, { flex: 2 }]}>
+                  <Text style={styles.detailFieldLabel}>BALLOON NUMBER</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.balloon || '—'}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* MATERIAL */}
+            <View style={styles.detailSection}>
+              <Text style={styles.detailSectionTitle}>MATERIAL</Text>
+              <View style={styles.detailFieldRow}>
+                <View style={styles.detailField}>
+                  <Text style={styles.detailFieldLabel}>MATERIAL INTERNO</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.materialint || '—'}</Text>
+                </View>
+                <View style={styles.detailField}>
+                  <Text style={styles.detailFieldLabel}>CALIBRE INTERNO</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.calibreint || '—'}</Text>
+                </View>
+                <View style={styles.detailField}>
+                  <Text style={styles.detailFieldLabel}>MATERIAL EXTERNO</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.materialext || '—'}</Text>
+                </View>
+                <View style={styles.detailField}>
+                  <Text style={styles.detailFieldLabel}>CALIBRE EXTERNO</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.calibreext || '—'}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* DETALLE */}
+            <View style={styles.detailSection}>
+              <Text style={styles.detailSectionTitle}>DETALLE</Text>
+              <View style={styles.detailFieldRow}>
+                <View style={styles.detailField}>
+                  <Text style={styles.detailFieldLabel}>AREA</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.area || '—'}</Text>
+                </View>
+                <View style={styles.detailField}>
+                  <Text style={styles.detailFieldLabel}>SUB AREA</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.subArea || '—'}</Text>
+                </View>
+                <View style={[styles.detailField, { flex: 2 }]}>
+                  <Text style={styles.detailFieldLabel}>MAQUINA</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.maquina || '—'}</Text>
+                </View>
+              </View>
+              <View style={styles.detailFieldRow}>
+                <View style={styles.detailField}>
+                  <Text style={styles.detailFieldLabel}>DEFECTO</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.defecto || '—'}</Text>
+                </View>
+                <View style={[styles.detailField, { flex: 2 }]}>
+                  <Text style={styles.detailFieldLabel}>CAUSA</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.causa || '—'}</Text>
+                </View>
+                <View style={styles.detailField}>
+                  <Text style={styles.detailFieldLabel}>CANTIDAD</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.cantidad || '—'}</Text>
+                </View>
+              </View>
+              <View style={styles.detailFieldRow}>
+                <View style={[styles.detailField, { flex: 2 }]}>
+                  <Text style={styles.detailFieldLabel}>TIPO REORDEN</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.tipoReorden || '—'}</Text>
+                </View>
+                <View style={[styles.detailField, { flex: 2 }]}>
+                  <Text style={styles.detailFieldLabel}>COMPONENTE</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.componente || '—'}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* COMENTARIOS */}
+            <View style={styles.detailSection}>
+              <Text style={styles.detailSectionTitle}>COMENTARIOS</Text>
+              <View style={styles.detailFieldRow}>
+                <View style={styles.detailField}>
+                  <Text style={styles.detailFieldLabel}>TURNO</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.turno || '—'}</Text>
+                </View>
+                <View style={[styles.detailField, { flex: 3 }]}>
+                  <Text style={styles.detailFieldLabel}>EMPLEADO</Text>
+                  <Text style={styles.detailFieldValue}>{selectedRow?.empleado || '—'}</Text>
+                </View>
+              </View>
+              <Text style={styles.detailFieldLabel}>COMENTARIOS</Text>
+              <View style={styles.detailCommentBox}>
+                <Text style={styles.detailCommentText}>{selectedRow?.comentarios || '—'}</Text>
+              </View>
+            </View>
+
+            {/* ESTATUS */}
+            <View style={styles.detailSection}>
+              <Text style={styles.detailSectionTitle}>ESTATUS</Text>
+              <View style={styles.detailCommentBox}>
+                <Text style={styles.detailCommentText}>{selectedRow?.estatus || '—'}</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.printButton, { marginTop: 16, marginBottom: 15 }, isSendingToDymo && { opacity: 0.7 }]}
+              onPress={handlePrintSelected}
+              activeOpacity={0.85}
+              disabled={isSendingToDymo}
+            >
+              <Text style={styles.printButtonText}>Imprimir Reorden</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
 
       <Modal
         visible={showPrintPreview}
@@ -604,7 +983,7 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
               <Text style={styles.modalCloseButtonText}>Cerrar</Text>
             </TouchableOpacity>
 
-            <Text style={styles.modalTitle}>Vista previa</Text>
+            <Text style={styles.modalTitle} numberOfLines={1} ellipsizeMode="tail">Vista previa</Text>
 
             <TouchableOpacity
               style={[styles.modalDymoButton, isSendingToDymo && { opacity: 0.7 }]}
@@ -612,12 +991,12 @@ export default function ConsultarReordenesScreen({ onBack }: ConsultarReordenesS
               activeOpacity={0.85}
               disabled={isSendingToDymo}
             >
-              <Text style={styles.modalDymoButtonText}>
+              <Text style={styles.modalDymoButtonText} numberOfLines={1} ellipsizeMode="tail">
                 {isSendingToDymo
                   ? 'Enviando...'
                   : selectedBridgeName
-                    ? `Enviar a DYMO (${selectedBridgeName})`
-                    : 'Enviar a DYMO'}
+                    ? `Imprimir`
+                    : 'Imprimir'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -691,18 +1070,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  statusPill: {
-    alignSelf: 'flex-start',
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#DBEAFE',
   },
-  statusPillText: {
+  searchInput: {
+    flex: 1,
+    height: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    fontSize: 14,
+    color: '#1F2937',
+  },
+  filterBtn: {
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  filterBtnActive: {
+    backgroundColor: '#1A49D8',
+  },
+  filterBtnText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#1D4ED8',
+    color: '#1F2937',
   },
   centeredState: {
     flex: 1,
@@ -715,7 +1114,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   tableWrap: {
-    paddingBottom: 12,
+    paddingBottom: 5,
   },
   tableHeader: {
     flexDirection: 'row',
@@ -729,11 +1128,11 @@ const styles = StyleSheet.create({
   th: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#1F2937',
+    color: '#000000',
     paddingHorizontal: 8,
   },
   rowsScroll: {
-    maxHeight: 560,
+    flex: 1,
     backgroundColor: '#FFFFFF',
     borderBottomLeftRadius: 8,
     borderBottomRightRadius: 8,
@@ -755,24 +1154,27 @@ const styles = StyleSheet.create({
   },
   td: {
     fontSize: 12,
-    color: '#374151',
+    color: '#000000',
     paddingHorizontal: 8,
   },
-  colFolio: { width: 110 },
-  colLinea: { width: 110 },
-  colEnsamble: { width: 110 },
-  colParte: { width: 105 },
-  colSecuencia: { width: 110 },
-  colMaterial: { width: 130 },
-  colCalibre: { width: 100 },
+  colEstatus: { width: 95 },
+  colFolio: { width: 75 },
+  colLinea: { width: 80 },
+  colEnsamble: { width: 80 },
+  colParte: { width: 115 },
+  colSecuencia: { width: 105 },
+  colMaterialInt: { width: 85 },
+  colCalibreInt: { width: 80 },
+  colMaterialExt: { width: 85 },
+  colCalibreExt: { width: 80 },
   colDefecto: { width: 100 },
   colCausa: { width: 170 },
   colMaquina: { width: 130 },
-  colCantidad: { width: 90 },
+  colCantidad: { width: 75 },
   colComentarios: { width: 260 },
   colFechaHora: { width: 150 },
   printButton: {
-    marginTop: 40,
+    marginTop: 10,
     height: 52,
     borderRadius: 12,
     backgroundColor: '#f7832b',
@@ -783,6 +1185,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+   detallesButton: {
+    marginTop: 10,
+    height: 52,
+    borderRadius: 12,
+    backgroundColor: '#1d52ff',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalContainer: {
     flex: 1,
@@ -805,6 +1215,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1F2937',
     textAlign: 'center',
+    paddingHorizontal: 8,
+    overflow: 'hidden',
   },
   modalCloseButton: {
     minWidth: 92,
@@ -827,14 +1239,115 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 10,
+    maxWidth: 220,
   },
   modalDymoButtonText: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+    textAlign: 'center',
+    includeFontPadding: false,
+    flexShrink: 1,
   },
   webView: {
     flex: 1,
     backgroundColor: '#E5E7EB',
+  },
+  detailModalSafe: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  detailModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  detailModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1A49D8',
+  },
+  detailModalCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  detailModalCloseBtnText: {
+    fontSize: 16,
+    color: '#374151',
+    fontWeight: '700',
+  },
+  detailModalBody: {
+    padding: 14,
+    gap: 12,
+  },
+  detailTopRow: {
+    flexDirection: 'row',
+    gap: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  detailTopField: {
+    flex: 1,
+    gap: 4,
+  },
+  detailSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    gap: 8,
+  },
+  detailSectionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1A49D8',
+    marginBottom: 2,
+  },
+  detailFieldRow: {
+    flexDirection: 'row',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  detailField: {
+    flex: 1,
+    minWidth: 80,
+    gap: 3,
+  },
+  detailFieldLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#6B7280',
+    textTransform: 'uppercase',
+  },
+  detailFieldValue: {
+    fontSize: 13,
+    color: '#1F2937',
+    backgroundColor: '#EEF2FF',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  detailCommentBox: {
+    backgroundColor: '#EEF2FF',
+    borderRadius: 6,
+    padding: 10,
+    minHeight: 44,
+  },
+  detailCommentText: {
+    fontSize: 13,
+    color: '#1F2937',
   },
 });
