@@ -33,6 +33,7 @@ cp .env.example .env
 Edita `.env` con los datos de esa máquina:
 
 **Máquina 1 - Embarques (.env):**
+
 ```
 PORT=3010
 BRIDGE_NAME=DYMO Embarques
@@ -42,6 +43,7 @@ DYMO_LABEL_PRESET=100x212
 ```
 
 **Máquina 2 - Calidad (.env):**
+
 ```
 PORT=3011
 BRIDGE_NAME=DYMO Calidad
@@ -103,7 +105,9 @@ export const NuevaReordenScreen = () => {
     await fetch(`${bridgeUrl}/api/rdm/print`, {
       method: 'POST',
       body: JSON.stringify({
-        labels: [/* tus etiquetas */],
+        labels: [
+          /* tus etiquetas */
+        ],
         labelPreset: '100x212',
         printerName: 'DYMO LABELWRITER 550',
       }),
@@ -137,6 +141,7 @@ npm start
 ```
 
 Deberías ver:
+
 ```
 RDM bridge activo en http://localhost:3010
 Bridge: DYMO Embarques
@@ -147,12 +152,14 @@ Bridge: DYMO Embarques
 ### Cada Bridge expone:
 
 **Health Check:**
+
 ```
 GET http://{IP}:{PORT}/api/rdm/health
 → { ok: true, service: "rdm-dymo-bridge" }
 ```
 
 **Info del Bridge:**
+
 ```
 GET http://{IP}:{PORT}/api/rdm/info
 → {
@@ -165,12 +172,14 @@ GET http://{IP}:{PORT}/api/rdm/info
 ```
 
 **Listar Impresoras Disponibles:**
+
 ```
 GET http://{IP}:{PORT}/api/rdm/printers
 → { printers: [...] }
 ```
 
 **Enviar a Imprimir:**
+
 ```
 POST http://{IP}:{PORT}/api/rdm/print
 Body: {
@@ -196,18 +205,21 @@ Body: {
 Hay varias opciones:
 
 ### Opción A: Leer desde archivo local (recomendado para React Native)
+
 ```tsx
 import bridgesConfig from '../bridges.config.json';
 const bridges = bridgesConfig.bridges;
 ```
 
 ### Opción B: Leer desde el backend API
+
 ```tsx
 const response = await fetch('http://192.168.17.9:4000/api/rdm/bridges');
 const { bridges } = await response.json();
 ```
 
 ### Opción C: Leer desde endpoint en el bridge
+
 ```tsx
 // Cada bridge expone su información
 const response = await fetch('http://192.168.1.100:3010/api/rdm/info');
@@ -221,20 +233,23 @@ const bridgeInfo = await response.json();
 ✅ **Resiliente**: Si un bridge falla, otros siguen funcionando  
 ✅ **Fácil de usar**: Selector visual que muestra disponibilidad  
 ✅ **Flexible**: Puedes cambiar puertos sin modificar código  
-✅ **Identificable**: Cada impresora tiene nombre descriptivo  
+✅ **Identificable**: Cada impresora tiene nombre descriptivo
 
 ## Troubleshooting
 
 ### "No se encuentran bridges disponibles"
+
 1. Verifica que cada bridge esté corriendo: `netstat -an | findstr :PORT`
 2. Verifica las IPs en `bridges.config.json`
 3. Verifica firewall permita comunicación en los puertos
 
 ### "Impresora DYMO no encontrada"
+
 1. Verifica el nombre exacto: `Get-Printer | findstr DYMO` (PowerShell)
 2. Actualiza `DYMO_PRINTER_NAME` en `.env`
 
 ### "Error de conexión al bridge"
+
 1. Verifica que el bridge esté escuchando en el puerto correcto
 2. Verifica conectividad: `ping 192.168.1.100`
 3. Revisa logs del bridge en la consola
@@ -242,6 +257,7 @@ const bridgeInfo = await response.json();
 ## Seguridad
 
 Para producción considera:
+
 - Agregar autenticación a los endpoints
 - Usar HTTPS en lugar de HTTP
 - Validar origen de peticiones (CORS configurado)

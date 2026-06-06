@@ -1,13 +1,14 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Animated,
   Modal,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  ToastAndroid,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -18,6 +19,7 @@ import { formatLocalDateTimeForSql } from '../utils/dateTime';
 
 type NuevaReordenScreenProps = {
   onBack: () => void;
+  loggedNomina?: string;
 };
 
 type PrintLabelData = {
@@ -25,9 +27,11 @@ type PrintLabelData = {
   fecha: string;
   ensamble: string;
   parte: string;
+  programa: string;
   secuencia: string;
   defecto: string;
   cantidad: string;
+  porPrograma: boolean;
 };
 
 type OptionItem = {
@@ -78,13 +82,15 @@ function CheckOption({
   label,
   value,
   onToggle,
+  flex,
 }: {
   label: string;
   value: boolean;
   onToggle: () => void;
+  flex?: number;
 }) {
   return (
-    <TouchableOpacity style={styles.checkOption} onPress={onToggle} activeOpacity={0.8}>
+    <TouchableOpacity style={[styles.checkOption, flex !== undefined && { flex }]} onPress={onToggle} activeOpacity={0.8}>
       <View style={[styles.checkbox, value && styles.checkboxChecked]}>
         {value ? <Text style={styles.checkboxMark}>✓</Text> : null}
       </View>
@@ -142,7 +148,7 @@ function SelectPlaceholder({
   );
 }
 
-export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) {
+export default function NuevaReordenScreen({ onBack, loggedNomina }: NuevaReordenScreenProps) {
   const plantOptions: OptionItem[] = [
     { label: 'Planta 1', value: 'Planta 1' },
     { label: 'Planta 2', value: 'Planta 2' },
@@ -200,11 +206,16 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
   const [noReprocesar, setNoReprocesar] = useState(false);
   const [panelCompleto, setPanelCompleto] = useState(false);
   const [disparo, setDisparo] = useState(false);
-  const [lrt, setLrt] = useState(false);
-  const [manual, setManual] = useState(false);
   const [kanban, setKanban] = useState(false);
   const [revisionIngenieria, setRevisionIngenieria] = useState(false);
   const [noPpm, setNoPpm] = useState(false);
+  const [usarProgramaComoNumeroParte, setUsarProgramaComoNumeroParte] = useState(false);
+  const [manualLinea, setManualLinea] = useState(false);
+  const [manualArea, setManualArea] = useState(false);
+  const [manualSubArea, setManualSubArea] = useState(false);
+  const [manualDefecto, setManualDefecto] = useState(false);
+  const [manualCausa, setManualCausa] = useState(false);
+  const [manualMaquina, setManualMaquina] = useState(false);
 
   const [semana, setSemana] = useState('');
   const [numeroParte, setNumeroParte] = useState('');
@@ -221,6 +232,9 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
   const [programa, setPrograma] = useState('');
   const [selectedMaterial, setSelectedMaterial] = useState('');
   const [calibreNP, setCalibreNP] = useState('');
+  const [materialExterno, setMaterialExterno] = useState('');
+  const [calibreExterno, setCalibreExterno] = useState('');
+  const [panelTipo, setPanelTipo] = useState<string | null>(null);
   const [tipoReorden, setTipoReorden] = useState('');
   const [componente, setComponente] = useState('');
   const [empleado, setEmpleado] = useState('');
@@ -229,6 +243,7 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
   const [isSaving, setIsSaving] = useState(false);
   const [isSendingToDymo, setIsSendingToDymo] = useState(false);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [showSavedModal, setShowSavedModal] = useState(false);
   const [printLabelData, setPrintLabelData] = useState<PrintLabelData | null>(null);
   const [previewHtml, setPreviewHtml] = useState('');
   const [showPlantaPicker, setShowPlantaPicker] = useState(false);
@@ -242,29 +257,6 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
   const [showTipoReordenPicker, setShowTipoReordenPicker] = useState(false);
   const [showComponentePicker, setShowComponentePicker] = useState(false);
   const [showTurnoPicker, setShowTurnoPicker] = useState(false);
-
-  const plantaBorderAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (planta) {
-      plantaBorderAnim.stopAnimation();
-      plantaBorderAnim.setValue(0);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(plantaBorderAnim, { toValue: 1, duration: 600, useNativeDriver: false }),
-        Animated.timing(plantaBorderAnim, { toValue: 0, duration: 600, useNativeDriver: false }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [planta, plantaBorderAnim]);
-
-  const plantaBorderColor = plantaBorderAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['#CBD5E0', '#F6AD55'],
-  });
 
   const nowDateTime = useMemo(() => {
     const now = new Date();
@@ -447,7 +439,10 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
           setLineaOptions(lineas);
           setAreaOptions(areas);
           setSubAreaOptions(subAreas);
-          setMaquinaOptions(maquinas);
+          setMaquinaOptions([
+            ...maquinas.filter(o => o.label.trim().toUpperCase() === 'N/A'),
+            ...maquinas.filter(o => o.label.trim().toUpperCase() !== 'N/A'),
+          ]);
           setDefectoOptions(defectos);
           setCausaOptions(causas);
         }
@@ -620,6 +615,9 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
       setSelectedRowSource('');
       setSelectedMaterial('');
       setCalibreNP('');
+      setMaterialExterno('');
+      setCalibreExterno('');
+      setPanelTipo(null);
     } catch (error) {
       Alert.alert(
         'Numero de Parte no disponible',
@@ -630,10 +628,20 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
 
   const handleSaveReorden = async () => {
     if (isSaving) return;
+
+    if (usarProgramaComoNumeroParte && !programa.trim()) {
+      Alert.alert('Dato incompleto', 'Escribe el programa completo en el input de Programa.');
+      return;
+    }
+
     setIsSaving(true);
     try {
       const firstSelectedIdx = selectedNumeroParteRows.size > 0 ? [...selectedNumeroParteRows][0] : null;
       const selectedRow = firstSelectedIdx != null ? numeroParteRows[firstSelectedIdx] : null;
+      const programaToSave = programa.trim();
+      const porPrograma = usarProgramaComoNumeroParte;
+      const numeroParteToSave = porPrograma ? null : (numeroParte.trim() || null);
+      const secuenciaToSave = usarProgramaComoNumeroParte ? 'Varias' : secuencia;
 
       const body = {
         folio,
@@ -648,33 +656,47 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
         semana: isSemanaChecked ? semana : '',
         panelCompleto,
         disparo,
-        lrt,
-        manual,
         kanban,
         revisionIngenieria,
         revisionConIngenieria: revisionIngenieria,
-        numeroParte,
-        idNumeroParte,
-        partNumberId: idNumeroParte,
-        secuencia,
-        sequence: secuencia,
+        numeroParte: numeroParteToSave,
+        partNumber: numeroParteToSave,
+        idNumeroParte: porPrograma ? null : idNumeroParte,
+        partNumberId: porPrograma ? null : idNumeroParte,
+        secuencia: secuenciaToSave,
+        sequence: secuenciaToSave,
         balloon,
         balloonNumber: balloon,
-        ensamble: selectedRowEnsamble || null,
-        selectedEnsamble: selectedRowEnsamble || null,
-        selectedComponente: selectedRowComponente || null,
-        selectedRowSource: selectedRowSource || null,
-        programa,
+        ensamble: porPrograma ? null : (selectedRowEnsamble || null),
+        selectedEnsamble: porPrograma ? null : (selectedRowEnsamble || null),
+        selectedComponente: porPrograma ? null : (selectedRowComponente || null),
+        selectedRowSource: porPrograma ? null : (selectedRowSource || null),
+        programa: programaToSave,
+        porPrograma,
         material: selectedMaterial,
+        materialInterno: selectedMaterial,
         calibre: calibreNP,
+        calibreInterno: calibreNP,
+        materialExterno: materialExterno || null,
+        calibreExterno: calibreExterno || null,
+        panel: panelTipo,
         tipoReorden,
+        tipo: (() => {
+          if (noPpm) return 'No PPM';
+          if (panelCompleto) return 'Panel Completo';
+          if (disparo) return 'Disparo';
+          if (kanban) return 'Kanban';
+          if (revisionIngenieria) return 'Revision con Ingenieria';
+          return null;
+        })(),
         componente,
         cantidad,
         empleado,
         comentarios,
         noReprocesar,
         captureDateTime: nowDateTime.sql,
-        numerosParteSelectedId: selectedRow?.id ?? null,
+        usuario: loggedNomina || empleado || null,
+        numerosParteSelectedId: porPrograma ? null : (selectedRow?.id ?? null),
         noMatchFound: numeroParteNoMatch,
         noPpm,
       };
@@ -725,9 +747,11 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
       const nextLabelData: PrintLabelData = {
         folio: folio || '',
         fecha: `${dd}/${mm}/${yyyy} ${h12}:${min} ${ampm}`,
-        ensamble: isFromEnsambles ? (selectedRowEnsamble || '') : '',
-        parte: numeroParte || '',
-        secuencia: secuencia || '--',
+        ensamble: isFromEnsambles && !porPrograma ? (selectedRowEnsamble || '') : '',
+        parte: porPrograma ? '' : (numeroParte || ''),
+        programa: programaToSave,
+        porPrograma,
+        secuencia: porPrograma ? 'Varias' : (secuencia || '--'),
         defecto: defecto || '--',
         cantidad: cantidad || '',
       };
@@ -750,10 +774,109 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
       fecha: escapeHtml(d.fecha),
       ensamble: escapeHtml(d.ensamble),
       parte: escapeHtml(d.parte),
+      programa: escapeHtml(d.programa),
       secuencia: escapeHtml(d.secuencia),
       defecto: escapeHtml(d.defecto),
       cantidad: escapeHtml(d.cantidad),
     };
+
+    const splitProgram = (value: string): [string, string] => {
+      if (value.length <= 20) {
+        return [value, ''];
+      }
+
+      return [value.slice(0, 20), value.slice(20)];
+    };
+
+    const [programLine1, programLine2] = splitProgram(safe.programa);
+
+    if (d.porPrograma) {
+      const continuationHtml = programLine2 ? `<p class="programContinuation">${programLine2}</p>` : '';
+      const programCard = `
+        <article class="sheet programSheet">
+          <h4>Reorden</h4>
+          <p><span>Fecha:</span> <b>${safe.fecha}</b></p>
+          <p><span>Programa:</span> <b>${programLine1}</b></p>
+          ${continuationHtml}
+          <p><span>Secuencia:</span> <b>Varias</b></p>
+          <p class="split"><span>Defecto: <b>${safe.defecto}</b></span><span>Cantidad: <b>${safe.cantidad}</b></span></p>
+          <p class="programFooter"><b>*PROGRAMA COMPLETO*</b></p>
+        </article>
+      `;
+
+      return `
+        <!doctype html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <style>
+              * { box-sizing: border-box; }
+              body {
+                margin: 0;
+                font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Arial, sans-serif;
+                background: #e6e7e9;
+                padding: 16px;
+                color: #1f2937;
+              }
+              .title {
+                text-align: center;
+                font-weight: 700;
+                color: #1b7d31;
+                margin: 0 0 12px 0;
+              }
+              .grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(250px, 1fr));
+                gap: 12px;
+              }
+              .sheet {
+                background: #f8f8f8;
+                border: 1px solid #d1d5db;
+                padding: 10px;
+                min-height: 150px;
+              }
+              .sheet h4 {
+                margin: 0 0 6px 0;
+                font-size: 15px;
+                text-transform: uppercase;
+              }
+              .sheet p {
+                margin: 0 0 7px 0;
+                font-size: 12px;
+                line-height: 1.35;
+              }
+              .sheet span { color: #374151; }
+              .sheet b { color: #111827; }
+              .split {
+                display: flex;
+                justify-content: space-between;
+                gap: 8px;
+              }
+              .programContinuation {
+                margin-top: -2px;
+                margin-bottom: 7px;
+                font-size: 11px;
+                font-weight: 600;
+                letter-spacing: 0.02em;
+              }
+              .programFooter {
+                margin-top: 10px;
+                text-align: center;
+                font-size: 11px;
+              }
+              @media (max-width: 700px) {
+                .grid { grid-template-columns: 1fr; }
+              }
+            </style>
+          </head>
+          <body>
+            <h3 class="title">Vista previa de impresion</h3>
+            <section class="grid">${programCard}${programCard}</section>
+          </body>
+        </html>
+      `;
+    }
 
     const hasEnsamble = !!d.ensamble;
     const hasSecuencia = !!d.secuencia && d.secuencia !== '--' && d.secuencia !== 'N/A';
@@ -855,9 +978,11 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
       return;
     }
 
-    const normalizedPart = normalizePartValue(printLabelData.parte);
+    const labelPart = printLabelData.porPrograma ? printLabelData.programa.trim() : printLabelData.parte.trim();
+    const normalizedPart = printLabelData.porPrograma ? labelPart : normalizePartValue(labelPart);
+
     if (!normalizedPart) {
-      Alert.alert('Sin datos', 'No hay numero de parte valido para enviar a DYMO.');
+      Alert.alert('Sin datos', printLabelData.porPrograma ? 'No hay programa valido para enviar a DYMO.' : 'No hay numero de parte valido para enviar a DYMO.');
       return;
     }
 
@@ -865,10 +990,12 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
       {
         ...printLabelData,
         parte: normalizedPart,
+        programa: printLabelData.porPrograma ? normalizedPart : printLabelData.programa,
       },
       {
         ...printLabelData,
         parte: normalizedPart,
+        programa: printLabelData.porPrograma ? normalizedPart : printLabelData.programa,
       },
     ];
 
@@ -889,15 +1016,8 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
         throw new Error(responseText || `Error ${response.status} al enviar a DYMO.`);
       }
 
-      Alert.alert('Listo', 'Se enviaron las etiquetas a la impresora DYMO.', [
-        {
-          text: 'OK',
-          onPress: () => {
-            setShowPrintPreview(false);
-            onBack();
-          },
-        },
-      ]);
+      setShowPrintPreview(false);
+      setShowSavedModal(true);
     } catch (error) {
       Alert.alert(
         'Error de impresion',
@@ -909,23 +1029,92 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
   };
 
   const handleExclusiveProcessToggle = (
-    option: 'panelCompleto' | 'disparo' | 'lrt' | 'manual' | 'kanban',
+    option: 'panelCompleto' | 'disparo' | 'kanban',
   ) => {
     const isCurrentlyChecked =
       (option === 'panelCompleto' && panelCompleto) ||
       (option === 'disparo' && disparo) ||
-      (option === 'lrt' && lrt) ||
-      (option === 'manual' && manual) ||
       (option === 'kanban' && kanban);
 
     const nextChecked = !isCurrentlyChecked;
 
     setPanelCompleto(option === 'panelCompleto' ? nextChecked : false);
     setDisparo(option === 'disparo' ? nextChecked : false);
-    setLrt(option === 'lrt' ? nextChecked : false);
-    setManual(option === 'manual' ? nextChecked : false);
     setKanban(option === 'kanban' ? nextChecked : false);
   };
+
+  const showAndroidToast = (message: string) => {
+    if (Platform.OS === 'android') {
+      ToastAndroid.show(message, ToastAndroid.SHORT);
+      return;
+    }
+
+    Alert.alert('Aviso', message);
+  };
+
+  const toggleManualField = (setter: React.Dispatch<React.SetStateAction<boolean>>) => {
+    setOpenDropdown(null);
+    setter(prev => !prev);
+  };
+
+  const handleToggleProgramaNumeroParte = () => {
+    setOpenDropdown(null);
+
+    if (!usarProgramaComoNumeroParte) {
+      showAndroidToast('Escribe el programa completo en el input de Programa.');
+      setNumeroParte('');
+      setIdNumeroParte('');
+    }
+
+    setUsarProgramaComoNumeroParte(prev => !prev);
+  };
+
+  const renderCatalogField = ({
+    label,
+    required = false,
+    manual,
+    onToggleManual,
+    value,
+    onChangeText,
+    placeholder = 'Seleccionar',
+    onPress,
+  }: {
+    label: string;
+    required?: boolean;
+    manual: boolean;
+    onToggleManual: () => void;
+    value: string;
+    onChangeText: (text: string) => void;
+    placeholder?: string;
+    onPress: () => void;
+  }) => (
+    <View style={styles.halfField}>
+      <View style={styles.fieldHeaderRow}>
+        <Text style={styles.fieldHeaderLabel}>
+          {label}
+          {required ? ' *' : ''}
+        </Text>
+        <CheckOption label="Manual" value={manual} onToggle={onToggleManual} flex={0} />
+      </View>
+      {manual ? (
+        <TextInput
+          style={styles.input}
+          value={value}
+          onChangeText={onChangeText}
+          autoCapitalize="words"
+        />
+      ) : (
+        <TouchableOpacity style={styles.input} onPress={onPress} activeOpacity={0.8}>
+          <View style={styles.selectRow}>
+            <Text style={value ? styles.selectText : styles.selectPlaceholderText}>
+              {value || placeholder}
+            </Text>
+            <Text style={styles.selectArrow}>▾</Text>
+          </View>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
 
   const renderPickerModal = ({
     visible,
@@ -1003,7 +1192,7 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
           <View style={styles.plantaNoReprocessRow}>
             <View style={styles.firstRowRight}>
               <Text style={styles.label}>Planta *</Text>
-              <Animated.View style={[styles.input, { borderColor: planta ? '#CBD5E0' : plantaBorderColor, padding: 0 }]}>
+              <View style={[styles.input, { borderColor: planta ? '#CBD5E0' : '#F6AD55', padding: 0 }]}>
                 <TouchableOpacity style={styles.animatedPlantaInner} onPress={() => setShowPlantaPicker(true)} activeOpacity={0.8}>
                   <View style={styles.selectRow}>
                     <Text style={planta ? styles.selectText : styles.selectPlaceholderText}>
@@ -1012,7 +1201,7 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
                     <Text style={styles.selectArrow}>▾</Text>
                   </View>
                 </TouchableOpacity>
-              </Animated.View>
+              </View>
             </View>
             <View style={styles.checkAligned}>
               <CheckOption
@@ -1033,20 +1222,26 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
             </Text>
           ) : null}
           <View style={{ marginBottom: 14 }}>
-            <Text style={styles.label}>Número de Parte *</Text>
+            <View style={styles.fieldHeaderRow}>
+              <Text style={styles.fieldHeaderLabel}>Número de Parte {usarProgramaComoNumeroParte ? '(opcional)' : '*'}</Text>
+              <CheckOption label="Programa" value={usarProgramaComoNumeroParte} onToggle={handleToggleProgramaNumeroParte} flex={0} />
+            </View>
             <View style={styles.scanInputRow}>
               <TextInput
-                style={[styles.input, { flex: 1 }]}
+                style={[styles.input, { flex: 1 }, usarProgramaComoNumeroParte && styles.disabledInput]}
                 value={numeroParte}
-                onChangeText={text => { setNumeroParte(text); setNumeroParteNoMatch(false); }}
+                onChangeText={text => { setNumeroParte(text.toUpperCase()); setNumeroParteNoMatch(false); }}
+                autoCapitalize="characters"
                 placeholder="Ingresa y presiona Enter"
                 returnKeyType="next"
+                editable={!usarProgramaComoNumeroParte}
                 onSubmitEditing={() => handleNumeroParteSubmit()}
               />
               <TouchableOpacity
-                style={styles.scanButton}
+                style={[styles.scanButton, usarProgramaComoNumeroParte && styles.disabledButton]}
                 onPress={() => setShowScanner(true)}
                 activeOpacity={0.8}
+                disabled={usarProgramaComoNumeroParte}
               >
                 <Text style={styles.scanButtonText}>📷 Escanear</Text>
               </TouchableOpacity>
@@ -1054,53 +1249,65 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
           </View>
           <View style={styles.row2}>
             <View style={styles.halfField}>
+              <Text style={styles.label}>Programa {usarProgramaComoNumeroParte ? '*' : '(inhabilitado)'}</Text>
+              <TextInput
+                style={[styles.input, !usarProgramaComoNumeroParte && styles.disabledInput]}
+                value={programa}
+                onChangeText={setPrograma}
+                editable={usarProgramaComoNumeroParte}
+                placeholder={usarProgramaComoNumeroParte ? 'Escribe el programa completo' : 'Activa Programa para editar'}
+              />
+            </View>
+          </View>
+          <View style={styles.row2}>
+            <View style={styles.halfField}>
               <Text style={styles.label}>Secuencia</Text>
-              <TextInput style={styles.input} value={secuencia} onChangeText={setSecuencia} />
+              <TextInput
+                style={[styles.input, usarProgramaComoNumeroParte && styles.disabledInput]}
+                value={usarProgramaComoNumeroParte ? 'Varias' : secuencia}
+                onChangeText={setSecuencia}
+                editable={!usarProgramaComoNumeroParte}
+                placeholder={usarProgramaComoNumeroParte ? 'Varias' : ''}
+              />
             </View>
             <View style={styles.halfField}>
               <Text style={styles.label}>Balloon Number</Text>
               <TextInput style={styles.input} value={balloon} onChangeText={setBalloon} />
             </View>
           </View>
-            <View style={styles.row2}>
-              <View style={styles.halfField}>
-                <Text style={styles.label}>Programa</Text>
-                <TextInput style={styles.input} value={programa} onChangeText={setPrograma} />
-              </View>
-              <View style={styles.halfField}>
-                <Text style={styles.label}>Material</Text>
-                <TouchableOpacity
-                  style={[styles.input, numeroParteRows.length > 0 && styles.disabledInput]}
-                  onPress={() => {
-                    if (numeroParteRows.length === 0) {
-                      setShowMaterialPicker(true);
-                    }
-                  }}
-                  activeOpacity={numeroParteRows.length === 0 ? 0.8 : 1}
-                  disabled={numeroParteRows.length > 0}
-                >
-                  <View style={styles.selectRow}>
-                    <Text style={selectedMaterial ? styles.selectText : styles.selectPlaceholderText}>
-                      {numeroParteRows.length > 0
-                        ? selectedMaterial || 'Selecciona una fila en la tabla'
-                        : selectedMaterial || 'Selecciona material'}
-                    </Text>
-                    <Text style={styles.selectArrow}>▾</Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
+          <View style={styles.row2}>
+            <View style={styles.halfField}>
+              <Text style={styles.label}>Material</Text>
+              <TouchableOpacity
+                style={[styles.input, numeroParteRows.length > 0 && styles.disabledInput]}
+                onPress={() => {
+                  if (numeroParteRows.length === 0) {
+                    setShowMaterialPicker(true);
+                  }
+                }}
+                activeOpacity={numeroParteRows.length === 0 ? 0.8 : 1}
+                disabled={numeroParteRows.length > 0}
+              >
+                <View style={styles.selectRow}>
+                  <Text style={selectedMaterial ? styles.selectText : styles.selectPlaceholderText}>
+                    {numeroParteRows.length > 0
+                      ? selectedMaterial || 'Selecciona una fila en la tabla'
+                      : selectedMaterial || 'Selecciona material'}
+                  </Text>
+                  <Text style={styles.selectArrow}>▾</Text>
+                </View>
+              </TouchableOpacity>
             </View>
-            <View style={styles.row2}>
-              <View style={styles.halfField}>
-                <Text style={styles.label}>Calibre</Text>
-                <TextInput
-                  style={[styles.input, numeroParteRows.length > 0 && styles.disabledInput]}
-                  value={calibreNP}
-                  onChangeText={setCalibreNP}
-                  editable={numeroParteRows.length === 0}
-                />
-              </View>
+            <View style={styles.halfField}>
+              <Text style={styles.label}>Calibre</Text>
+              <TextInput
+                style={[styles.input, numeroParteRows.length > 0 && styles.disabledInput]}
+                value={calibreNP}
+                onChangeText={setCalibreNP}
+                editable={numeroParteRows.length === 0}
+              />
             </View>
+          </View>
         </View>
 
         {/* ── Tabla de resultados Número de Parte ── */}
@@ -1135,7 +1342,10 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
                         // Actualizar campos del contexto con la última fila agregada
                         const rowSourceRaw = row.raw?.Source ?? row.raw?.source;
                         const rowSource = typeof rowSourceRaw === 'string' ? rowSourceRaw.trim() : '';
-                        setSelectedRowEnsamble(row.ensamble || '');
+                        // Para filas _Ins/_Out limpiar ensamble para que backend use body.numeroParte
+                        const rowEnsambleUpper = (row.ensamble || '').toUpperCase();
+                        const isInsOutRow = rowEnsambleUpper.endsWith('_INS') || rowEnsambleUpper.endsWith('_OUT');
+                        setSelectedRowEnsamble(isInsOutRow ? '' : (row.ensamble || ''));
                         setSelectedRowComponente(row.componente || '');
                         setSelectedRowSource(rowSource);
                         if (row.linea) setLinea(row.linea);
@@ -1155,6 +1365,58 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
                       setSelectedNumeroParteRows(newSelected);
                       // Secuencia y Balloon: concatenar valores de todas las filas seleccionadas
                       const allRows = [...newSelected].map(i => numeroParteRows[i]);
+
+                      // Detectar caso Panel Completo (_Ins + _Out)
+                      const insRow = allRows.find(r => r.ensamble.toUpperCase().endsWith('_INS'));
+                      const outRow = allRows.find(r => r.ensamble.toUpperCase().endsWith('_OUT'));
+                      if (allRows.length === 2 && insRow && outRow) {
+                        const insBase = insRow.ensamble.slice(0, -4);
+                        const outBase = outRow.ensamble.slice(0, -4);
+                        if (insBase.toUpperCase() === outBase.toUpperCase()) {
+                          // Limpiar selectedRowEnsamble para que el backend use body.numeroParte (lo que escribió el usuario)
+                          setSelectedRowEnsamble('');
+                          setPanelCompleto(true);
+                          setPanelTipo('Completo');
+                          setDisparo(false);
+                          setKanban(false);
+                          setSelectedMaterial(insRow.material || '');
+                          setCalibreNP(insRow.calibre || '');
+                          setMaterialExterno(outRow.material || '');
+                          setCalibreExterno(outRow.calibre || '');
+                          setSecuencia(insRow.secuencia || outRow.secuencia || '');
+                          setBalloon(insRow.balloon || outRow.balloon || '');
+                          return;
+                        }
+                      }
+
+                      // Escenario 2: solo _Ins seleccionado
+                      if (allRows.length === 1 && allRows[0].ensamble.toUpperCase().endsWith('_INS')) {
+                        setPanelTipo('Inside');
+                        setSelectedMaterial(allRows[0].material || '');
+                        setCalibreNP(allRows[0].calibre || '');
+                        setMaterialExterno('');
+                        setCalibreExterno('');
+                        setSecuencia(allRows[0].secuencia || '');
+                        setBalloon(allRows[0].balloon || '');
+                        return;
+                      }
+
+                      // Escenario 3: solo _Out seleccionado
+                      if (allRows.length === 1 && allRows[0].ensamble.toUpperCase().endsWith('_OUT')) {
+                        setPanelTipo('Outside');
+                        setSelectedMaterial('');
+                        setCalibreNP('');
+                        setMaterialExterno(allRows[0].material || '');
+                        setCalibreExterno(allRows[0].calibre || '');
+                        setSecuencia(allRows[0].secuencia || '');
+                        setBalloon(allRows[0].balloon || '');
+                        return;
+                      }
+
+                      // Caso normal: resetear campos externo y panelTipo
+                      setPanelTipo(null);
+                      setMaterialExterno('');
+                      setCalibreExterno('');
                       setSecuencia(allRows.map(r => r.secuencia || '').filter(Boolean).join(', '));
                       setBalloon(allRows.map(r => r.balloon || '').filter(Boolean).join(', '));
                     }}
@@ -1184,6 +1446,7 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
               label="Semana"
               value={isSemanaChecked}
               onToggle={() => setIsSemanaChecked(prev => !prev)}
+              flex={0}
             />
             <TextInput
               style={[styles.input, styles.weekInput, !isSemanaChecked && styles.disabledInput]}
@@ -1193,44 +1456,39 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
               editable={isSemanaChecked}
               keyboardType="number-pad"
             />
+            <CheckOption
+              label="Disparo"
+              value={disparo}
+              onToggle={() => handleExclusiveProcessToggle('disparo')}
+              flex={0}
+            />
           </View>
           <View style={styles.checksRow}>
             <CheckOption
               label="Panel Completo"
               value={panelCompleto}
               onToggle={() => handleExclusiveProcessToggle('panelCompleto')}
-            />
-            <CheckOption
-              label="Disparo"
-              value={disparo}
-              onToggle={() => handleExclusiveProcessToggle('disparo')}
-            />
-            <CheckOption
-              label="Lrt"
-              value={lrt}
-              onToggle={() => handleExclusiveProcessToggle('lrt')}
-            />
-            <CheckOption
-              label="Manual"
-              value={manual}
-              onToggle={() => handleExclusiveProcessToggle('manual')}
+              flex={0}
             />
             <CheckOption
               label="Kanban"
               value={kanban}
               onToggle={() => handleExclusiveProcessToggle('kanban')}
+              flex={0}
             />
           </View>
           <View style={styles.checksRow}>
             <CheckOption
-              label="Revision con ingenieria"
-              value={revisionIngenieria}
-              onToggle={() => setRevisionIngenieria(prev => !prev)}
-            />
-            <CheckOption
               label="No PPM"
               value={noPpm}
               onToggle={() => setNoPpm(prev => !prev)}
+              flex={0}
+            />
+            <CheckOption
+              label="Revision con ingenieria"
+              value={revisionIngenieria}
+              onToggle={() => setRevisionIngenieria(prev => !prev)}
+              flex={0}
             />
           </View>
         </View>
@@ -1240,78 +1498,71 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
           <Text style={styles.sectionTitle}>Detalles del defecto</Text>
 
           <View style={styles.row2}>
-            <View style={styles.halfField}>
-              <Text style={styles.label}>Línea *</Text>
-              <TouchableOpacity style={styles.input} onPress={() => setShowLineaPicker(true)} activeOpacity={0.8}>
-                <View style={styles.selectRow}>
-                  <Text style={linea ? styles.selectText : styles.selectPlaceholderText}>
-                    {linea || 'Seleccionar'}
-                  </Text>
-                  <Text style={styles.selectArrow}>▾</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.halfField}>
-              <Text style={styles.label}>Área *</Text>
-              <TouchableOpacity style={styles.input} onPress={() => setShowAreaPicker(true)} activeOpacity={0.8}>
-                <View style={styles.selectRow}>
-                  <Text style={area ? styles.selectText : styles.selectPlaceholderText}>
-                    {area || 'Seleccionar'}
-                  </Text>
-                  <Text style={styles.selectArrow}>▾</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
+            {renderCatalogField({
+              label: 'Línea',
+              required: true,
+              manual: manualLinea,
+              onToggleManual: () => toggleManualField(setManualLinea),
+              value: linea,
+              onChangeText: setLinea,
+              placeholder: 'Seleccionar',
+              onPress: () => setShowLineaPicker(true),
+            })}
+            {renderCatalogField({
+              label: 'Área',
+              required: true,
+              manual: manualArea,
+              onToggleManual: () => toggleManualField(setManualArea),
+              value: area,
+              onChangeText: setArea,
+              placeholder: 'Seleccionar',
+              onPress: () => setShowAreaPicker(true),
+            })}
           </View>
 
           <View style={styles.row2}>
-            <View style={styles.halfField}>
-              <Text style={styles.label}>Sub Área</Text>
-              <TouchableOpacity style={styles.input} onPress={() => setShowSubAreaPicker(true)} activeOpacity={0.8}>
-                <View style={styles.selectRow}>
-                  <Text style={subArea ? styles.selectText : styles.selectPlaceholderText}>
-                    {subArea || 'Seleccionar'}
-                  </Text>
-                  <Text style={styles.selectArrow}>▾</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.halfField}>
-              <Text style={styles.label}>Defecto *</Text>
-              <TouchableOpacity style={styles.input} onPress={() => setShowDefectoPicker(true)} activeOpacity={0.8}>
-                <View style={styles.selectRow}>
-                  <Text style={defecto ? styles.selectText : styles.selectPlaceholderText}>
-                    {defecto || 'Seleccionar'}
-                  </Text>
-                  <Text style={styles.selectArrow}>▾</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
+            {renderCatalogField({
+              label: 'Sub Área',
+              manual: manualSubArea,
+              onToggleManual: () => toggleManualField(setManualSubArea),
+              value: subArea,
+              onChangeText: setSubArea,
+              placeholder: 'Seleccionar',
+              onPress: () => setShowSubAreaPicker(true),
+            })}
+            {renderCatalogField({
+              label: 'Defecto',
+              required: true,
+              manual: manualDefecto,
+              onToggleManual: () => toggleManualField(setManualDefecto),
+              value: defecto,
+              onChangeText: setDefecto,
+              placeholder: 'Seleccionar',
+              onPress: () => setShowDefectoPicker(true),
+            })}
           </View>
 
           <View style={styles.row2}>
-            <View style={styles.halfField}>
-              <Text style={styles.label}>Causa *</Text>
-              <TouchableOpacity style={styles.input} onPress={() => setShowCausaPicker(true)} activeOpacity={0.8}>
-                <View style={styles.selectRow}>
-                  <Text style={causa ? styles.selectText : styles.selectPlaceholderText}>
-                    {causa || 'Seleccionar'}
-                  </Text>
-                  <Text style={styles.selectArrow}>▾</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.halfField}>
-              <Text style={styles.label}>Máquina *</Text>
-              <TouchableOpacity style={styles.input} onPress={() => setShowMaquinaPicker(true)} activeOpacity={0.8}>
-                <View style={styles.selectRow}>
-                  <Text style={maquina ? styles.selectText : styles.selectPlaceholderText}>
-                    {maquina || 'Seleccionar'}
-                  </Text>
-                  <Text style={styles.selectArrow}>▾</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
+            {renderCatalogField({
+              label: 'Causa',
+              required: true,
+              manual: manualCausa,
+              onToggleManual: () => toggleManualField(setManualCausa),
+              value: causa,
+              onChangeText: setCausa,
+              placeholder: 'Seleccionar',
+              onPress: () => setShowCausaPicker(true),
+            })}
+            {renderCatalogField({
+              label: 'Máquina',
+              required: true,
+              manual: manualMaquina,
+              onToggleManual: () => toggleManualField(setManualMaquina),
+              value: maquina,
+              onChangeText: setMaquina,
+              placeholder: 'Seleccionar',
+              onPress: () => setShowMaquinaPicker(true),
+            })}
           </View>
 
           <View style={styles.row2}>
@@ -1329,14 +1580,19 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
             <View style={styles.halfField}>
               <Text style={styles.label}>Componente</Text>
               <TouchableOpacity
-                style={[styles.input, tipoReorden !== 'Componente' && styles.disabledInput]}
-                onPress={() => {
-                  if (tipoReorden === 'Componente') {
-                    setShowComponentePicker(true);
+                style={styles.input}
+                onPress={async () => {
+                  if (componenteOptions.length === 0) {
+                    try {
+                      const opts = await fetchCatalogOptions(GET_COMPONENTES_URL);
+                      setComponenteOptions(opts);
+                    } catch {
+                      setComponenteOptions([]);
+                    }
                   }
+                  setShowComponentePicker(true);
                 }}
-                activeOpacity={tipoReorden === 'Componente' ? 0.8 : 1}
-                disabled={tipoReorden !== 'Componente'}
+                activeOpacity={0.8}
               >
                 <View style={styles.selectRow}>
                   <Text style={componente ? styles.selectText : styles.selectPlaceholderText}>
@@ -1498,15 +1754,12 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
             } catch {
               setComponenteOptions([]);
             }
-          } else {
-            setComponente('');
-            setComponenteOptions([]);
           }
         },
       })}
 
       {renderPickerModal({
-        visible: showComponentePicker && tipoReorden === 'Componente',
+        visible: showComponentePicker,
         onClose: () => setShowComponentePicker(false),
         title: 'Selecciona componente',
         options: componenteOptions,
@@ -1529,13 +1782,13 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
       <Modal
         visible={showPrintPreview}
         animationType="slide"
-        onRequestClose={() => setShowPrintPreview(false)}
+        onRequestClose={() => { setShowPrintPreview(false); setShowSavedModal(true); }}
       >
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalToolbar}>
             <TouchableOpacity
               style={styles.modalCloseButton}
-              onPress={() => setShowPrintPreview(false)}
+              onPress={() => { setShowPrintPreview(false); setShowSavedModal(true); }}
               activeOpacity={0.85}
             >
               <Text style={styles.modalCloseButtonText}>Cerrar</Text>
@@ -1562,6 +1815,28 @@ export default function NuevaReordenScreen({ onBack }: NuevaReordenScreenProps) 
             scalesPageToFit
           />
         </SafeAreaView>
+      </Modal>
+
+      <Modal
+        visible={showSavedModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { setShowSavedModal(false); onBack(); }}
+      >
+        <View style={styles.savedModalOverlay}>
+          <View style={styles.savedModalBox}>
+            <Text style={styles.savedModalIcon}>✓</Text>
+            <Text style={styles.savedModalTitle}>Reorden guardada</Text>
+            <Text style={styles.savedModalBody}>La reorden se guardó correctamente.</Text>
+            <TouchableOpacity
+              style={styles.savedModalButton}
+              onPress={() => { setShowSavedModal(false); onBack(); }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.savedModalButtonText}>Aceptar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
       {showScanner && (
@@ -1699,6 +1974,19 @@ const styles = StyleSheet.create({
     color: '#4A5568',
     marginBottom: 6,
   },
+  fieldHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 6,
+  },
+  fieldHeaderLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4A5568',
+    flexShrink: 1,
+  },
   animatedPlantaInner: {
     flex: 1,
     height: '100%',
@@ -1792,14 +2080,15 @@ const styles = StyleSheet.create({
   checksRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 18,
+    gap: 12,
     marginBottom: 12,
+    flexWrap: 'wrap',
   },
   semanaRow: {
     justifyContent: 'flex-start',
   },
   checkOption: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -1912,6 +2201,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexShrink: 0,
   },
+  disabledButton: {
+    opacity: 0.55,
+  },
   scanButtonText: {
     color: '#fff',
     fontSize: 14,
@@ -1944,6 +2236,54 @@ const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  savedModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  savedModalBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 340,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+  },
+  savedModalIcon: {
+    fontSize: 48,
+    color: '#1b7d31',
+    marginBottom: 12,
+  },
+  savedModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1b7d31',
+    marginBottom: 8,
+  },
+  savedModalBody: {
+    fontSize: 15,
+    color: '#374151',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  savedModalButton: {
+    backgroundColor: '#1A49D8',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 40,
+  },
+  savedModalButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 16,
   },
   modalToolbar: {
     flexDirection: 'row',

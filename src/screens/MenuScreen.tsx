@@ -12,6 +12,8 @@ const BRAND_BLUE = '#1400FF';
 
 type MenuScreenProps = {
   userName: string;
+  loggedDept: string;
+  loggedTipo: string;
   onNuevaReorden: () => void;
   onConsultarReordenes: () => void;
   onRDMs: () => void;
@@ -19,27 +21,35 @@ type MenuScreenProps = {
 
 export default function MenuScreen({
   userName,
+  loggedDept,
+  loggedTipo,
   onNuevaReorden,
   onConsultarReordenes,
   onRDMs,
 }: MenuScreenProps) {
+  const dept = loggedDept.toLowerCase().trim();
+  const tipo = loggedTipo.toLowerCase().trim();
+  const isCalidad =
+    dept === 'calidad' && (tipo === 'usuario' || tipo === 'administrador');
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {/* Botones centrados en toda la pantalla */}
         <View style={styles.buttonsWrapper}>
-          <TouchableOpacity
-            style={[styles.menuButton, styles.buttonPrimary]}
-            onPress={onNuevaReorden}
-          >
-            <Text style={styles.menuEmoji}>📝</Text>
-            <View style={styles.menuButtonContent}>
-              <Text style={styles.menuButtonText}>Nueva Reorden</Text>
-              <Text style={styles.menuButtonSubText}>Crear una nueva solicitud</Text>
-            </View>
-            <Text style={styles.menuArrow}>›</Text>
-          </TouchableOpacity>
+          {isCalidad && (
+            <TouchableOpacity
+              style={[styles.menuButton, styles.buttonPrimary]}
+              onPress={onNuevaReorden}
+            >
+              <Text style={styles.menuEmoji}>📝</Text>
+              <View style={styles.menuButtonContent}>
+                <Text style={styles.menuButtonText}>Nueva Reorden</Text>
+                <Text style={styles.menuButtonSubText}>Crear una nueva solicitud</Text>
+              </View>
+              <Text style={styles.menuArrow}>›</Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={[styles.menuButton, styles.buttonSecondary]}
@@ -53,17 +63,19 @@ export default function MenuScreen({
             <Text style={styles.menuArrow}>›</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.menuButton, styles.buttonTertiary]}
-            onPress={onRDMs}
-          >
-            <Text style={styles.menuEmoji}>📦</Text>
-            <View style={styles.menuButtonContent}>
-              <Text style={styles.menuButtonText}>RDMs</Text>
-              <Text style={styles.menuButtonSubText}>Gestión de movimientos RDM</Text>
-            </View>
-            <Text style={styles.menuArrow}>›</Text>
-          </TouchableOpacity>
+          {isCalidad && (
+            <TouchableOpacity
+              style={[styles.menuButton, styles.buttonTertiary]}
+              onPress={onRDMs}
+            >
+              <Text style={styles.menuEmoji}>📦</Text>
+              <View style={styles.menuButtonContent}>
+                <Text style={styles.menuButtonText}>RDMs</Text>
+                <Text style={styles.menuButtonSubText}>Gestión de movimientos RDM</Text>
+              </View>
+              <Text style={styles.menuArrow}>›</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Header encima de los botones */}

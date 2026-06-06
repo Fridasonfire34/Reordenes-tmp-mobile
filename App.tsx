@@ -55,6 +55,8 @@ function App() {
   >('login');
   const [loggedUser, setLoggedUser] = useState('Usuario');
   const [loggedNomina, setLoggedNomina] = useState('');
+  const [loggedDept, setLoggedDept] = useState('');
+  const [loggedTipo, setLoggedTipo] = useState('');
   const [rdmFolioForPhotos, setRdmFolioForPhotos] = useState('');
   const [rdmDraft, setRdmDraft] = useState<RdmDraft | null>(null);
 
@@ -67,21 +69,25 @@ function App() {
       <StatusBar barStyle="dark-content" backgroundColor="#EEF1F5" />
       {currentScreen === 'login' ? (
         <LoginScreen
-          onLoginSuccess={({ name, nomina }) => {
+          onLoginSuccess={({ name, nomina, dept, tipo }) => {
             setLoggedUser(name || 'Usuario');
             setLoggedNomina(nomina || '');
+            setLoggedDept(dept || '');
+            setLoggedTipo(tipo || '');
             setCurrentScreen('menu');
           }}
         />
       ) : currentScreen === 'menu' ? (
         <MenuScreen
           userName={loggedUser}
+          loggedDept={loggedDept}
+          loggedTipo={loggedTipo}
           onNuevaReorden={() => setCurrentScreen('new-order')}
           onConsultarReordenes={() => setCurrentScreen('consultar-reordenes')}
           onRDMs={() => setCurrentScreen('rdms-menu')}
         />
       ) : currentScreen === 'new-order' ? (
-        <NuevaReordenScreen onBack={() => setCurrentScreen('menu')} />
+        <NuevaReordenScreen onBack={() => setCurrentScreen('menu')} loggedNomina={loggedNomina} />
       ) : currentScreen === 'rdms-menu' ? (
         <RDMsMenuScreen
           onBack={() => setCurrentScreen('menu')}

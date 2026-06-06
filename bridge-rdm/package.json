@@ -3,8 +3,27 @@
   "version": "1.0.0",
   "private": true,
   "main": "server.js",
+  "bin": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build:exe": "pkg . --target node18-win-x64 --output dist/bridge-rdm.exe && copy node_modules\\pdf-to-printer\\dist\\SumatraPDF-3.4.6-32.exe dist\\SumatraPDF-3.4.6-32.exe && copy .env dist\\.env"
+  },
+  "pkg": {
+    "scripts": [
+      "server.js",
+      "node_modules/es-get-iterator/node.js"
+    ],
+    "assets": [
+      "node_modules/es-get-iterator/**/*",
+      "node_modules/pdf-to-printer/dist/SumatraPDF-3.4.6-32.exe",
+      "node_modules/pdfkit/js/data/*",
+      "node_modules/pdfkit/js/data/**/*",
+      ".env"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ],
+    "outputPath": "dist"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -12,5 +31,8 @@
     "express": "^4.21.2",
     "pdf-to-printer": "^5.6.0",
     "pdfkit": "^0.15.0"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
   }
 }

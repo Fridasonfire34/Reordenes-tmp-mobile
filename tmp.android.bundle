@@ -100167,7 +100167,7 @@ __d(function (global, _$$_REQUIRE, _$$_IMPORT_DEFAULT, _$$_IMPORT_ALL, module, e
   var getLoginUrls = () => {
     try {
       var parsed = new URL(LOGIN_URL);
-      var preferredHosts = ['192.168.16.224', '10.0.2.2', '127.0.0.1'];
+      var preferredHosts = ['192.168.16.146', '10.0.2.2', '192.168.16.146'];
       var hostsToTry = [...preferredHosts.filter(host => host !== parsed.hostname), parsed.hostname];
       var portSegment = parsed.port ? `:${parsed.port}` : '';
       var pathAndQuery = `${parsed.pathname}${parsed.search}`;
@@ -100277,7 +100277,7 @@ __d(function (global, _$$_REQUIRE, _$$_IMPORT_DEFAULT, _$$_IMPORT_ALL, module, e
           setRecoveryTimeLeft(10 * 60);
           setScreenMode('verify-code');
         } catch (error) {
-          _reactNative.Alert.alert('Error de red', 'No se pudo conectar con el servidor.');
+          _reactNative.Alert.alert('192.168.16.146', 'No se pudo conectar con el servidor.');
           console.error('Recovery send code error:', error);
         } finally {
           setIsSubmitting(false);
@@ -100942,8 +100942,8 @@ __d(function (global, _$$_REQUIRE, _$$_IMPORT_DEFAULT, _$$_IMPORT_ALL, module, e
   });
   exports.DYMO_ENDPOINTS = exports.API_ENDPOINTS = void 0;
   var stripTrailingSlash = value => value.trim().replace(/\/$/, '');
-  var MOBILE_API_BASE = `${stripTrailingSlash("http://192.168.16.224:4000")}/api/mobile`;
-  var DYMO_API_BASE = `${stripTrailingSlash("http://192.168.16.224:3011")}/api/rdm`;
+  var MOBILE_API_BASE = `${stripTrailingSlash("http://192.168.16.146:4000")}/api/mobile`;
+  var DYMO_API_BASE = `${stripTrailingSlash("http://192.168.16.146:3011")}/api/rdm`;
   var API_ENDPOINTS = exports.API_ENDPOINTS = {
     login: `${MOBILE_API_BASE}/signing/login`,
     recoveryBase: `${MOBILE_API_BASE}/signing/recover`,

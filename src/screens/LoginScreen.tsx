@@ -19,21 +19,16 @@ const LOGIN_URL = API_ENDPOINTS.login;
 const RECOVERY_URL = API_ENDPOINTS.recoveryBase;
 
 const getLoginUrls = (): string[] => {
-  try {
-    const parsed = new URL(LOGIN_URL);
-    const preferredHosts = ['192.168.16.224', '10.0.2.2', '127.0.0.1'];
-    const hostsToTry = [...preferredHosts.filter(host => host !== parsed.hostname), parsed.hostname];
-    const portSegment = parsed.port ? `:${parsed.port}` : '';
-    const pathAndQuery = `${parsed.pathname}${parsed.search}`;
-
-    return hostsToTry.map(host => `${parsed.protocol}//${host}${portSegment}${pathAndQuery}`);
-  } catch {
-    return [LOGIN_URL];
-  }
+  return [LOGIN_URL];
 };
 
 type LoginScreenProps = {
-  onLoginSuccess?: (payload: { name: string; nomina: string }) => void;
+  onLoginSuccess?: (payload: {
+    name: string;
+    nomina: string;
+    dept: string;
+    tipo: string;
+  }) => void;
 };
 
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
@@ -61,7 +56,9 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     const safeSeconds = Math.max(0, seconds);
     const minutes = Math.floor(safeSeconds / 60);
     const remainingSeconds = safeSeconds % 60;
-    return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+    return `${String(minutes).padStart(2, '0')}:${String(
+      remainingSeconds,
+    ).padStart(2, '0')}`;
   };
 
   useEffect(() => {
@@ -78,7 +75,10 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
   const handleSendRecoveryCode = async () => {
     if (!recoveryNomina.trim()) {
-      Alert.alert('Dato incompleto', 'Ingresa tu número de nómina para recuperar la contraseña.');
+      Alert.alert(
+        'Dato incompleto',
+        'Ingresa tu número de nómina para recuperar la contraseña.',
+      );
       return;
     }
 
@@ -130,7 +130,10 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       const response = await fetch(`${RECOVERY_URL}/validate-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nomina: recoveryNomina.trim(), codigo: recoveryCode.trim() }),
+        body: JSON.stringify({
+          nomina: recoveryNomina.trim(),
+          codigo: recoveryCode.trim(),
+        }),
       });
 
       const data = await response.json();
@@ -151,7 +154,10 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
   const handleResetPassword = async () => {
     if (!newPassword || newPassword.length < 6) {
-      Alert.alert('Contraseña inválida', 'La contraseña debe tener al menos 6 caracteres.');
+      Alert.alert(
+        'Contraseña inválida',
+        'La contraseña debe tener al menos 6 caracteres.',
+      );
       return;
     }
 
@@ -161,7 +167,10 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert('No coincide', 'La confirmación no coincide con la nueva contraseña.');
+      Alert.alert(
+        'No coincide',
+        'La confirmación no coincide con la nueva contraseña.',
+      );
       return;
     }
 
@@ -180,7 +189,10 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       const data = await response.json();
 
       if (!response.ok) {
-        Alert.alert('Error', data?.message || 'No se pudo cambiar la contraseña.');
+        Alert.alert(
+          'Error',
+          data?.message || 'No se pudo cambiar la contraseña.',
+        );
         return;
       }
 
@@ -204,7 +216,10 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const handleLogin = async () => {
     if (!nomina.trim() || !password) {
       console.error('Login validation error: nomina o contraseña vacias');
-      Alert.alert('Datos incompletos', 'Ingresa numero de nomina y contraseña.');
+      Alert.alert(
+        'Datos incompletos',
+        'Ingresa numero de nomina y contraseña.',
+      );
       return;
     }
 
@@ -251,12 +266,16 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       }
 
       if (!response) {
-        throw new Error(`No se pudo conectar a ningun host. Probados: ${loginUrls.join(', ')}`);
+        throw new Error(
+          `No se pudo conectar al servidor`,
+        );
       }
 
       if (!response.ok) {
         const errorMessage =
-          typeof data === 'string' ? data : data?.message || 'No fue posible iniciar sesión.';
+          typeof data === 'string'
+            ? data
+            : data?.message || 'No fue posible iniciar sesión.';
         console.error('Login HTTP error:', {
           url: usedUrl,
           status: response.status,
@@ -289,10 +308,25 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             )
           : nomina.trim();
 
-      onLoginSuccess?.({ name: loggedUser, nomina: loggedNomina });
+      const loggedDept =
+        typeof data === 'object' && data
+          ? String(data?.user?.dept ?? data?.dept ?? '')
+          : '';
+      const loggedTipo =
+        typeof data === 'object' && data
+          ? String(data?.user?.tipo ?? data?.tipo ?? '')
+          : '';
+      onLoginSuccess?.({
+        name: loggedUser,
+        nomina: loggedNomina,
+        dept: loggedDept,
+        tipo: loggedTipo,
+      });
     } catch (error) {
       const networkMessage =
-        error instanceof Error ? error.message : 'No se pudo conectar con el servidor.';
+        error instanceof Error
+          ? error.message
+          : 'No se pudo conectar con el servidor.';
       Alert.alert('Error de red', networkMessage);
       console.error('Login network error:', error);
     } finally {
@@ -365,7 +399,9 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                   onPress={() => setShowPassword(v => !v)}
                   style={styles.eyeButton}
                 >
-                  <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁'}</Text>
+                  <Text style={styles.eyeIcon}>
+                    {showPassword ? '🙈' : '👁'}
+                  </Text>
                 </TouchableOpacity>
               </View>
 
@@ -377,7 +413,10 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.loginButton, isSubmitting && styles.loginButtonDisabled]}
+                style={[
+                  styles.loginButton,
+                  isSubmitting && styles.loginButtonDisabled,
+                ]}
                 onPress={handleLogin}
                 disabled={isSubmitting}
               >
@@ -390,7 +429,8 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             <View style={styles.formCard}>
               <Text style={styles.formTitle}>Recuperar contraseña</Text>
               <Text style={styles.recoveryDescription}>
-                Escribe tu número de nómina para enviar el código de recuperación al correo registrado.
+                Escribe tu número de nómina para enviar el código de
+                recuperación al correo registrado.
               </Text>
 
               <View style={styles.divider} />
@@ -399,7 +439,9 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               <TextInput
                 style={styles.input}
                 value={recoveryNomina}
-                onChangeText={value => setRecoveryNomina(value.replace(/\D/g, ''))}
+                onChangeText={value =>
+                  setRecoveryNomina(value.replace(/\D/g, ''))
+                }
                 keyboardType="number-pad"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -408,7 +450,10 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 onSubmitEditing={handleSendRecoveryCode}
               />
 
-              <TouchableOpacity style={styles.loginButton} onPress={handleSendRecoveryCode}>
+              <TouchableOpacity
+                style={styles.loginButton}
+                onPress={handleSendRecoveryCode}
+              >
                 <Text style={styles.loginButtonText}>
                   {isSubmitting ? 'Enviando...' : 'Enviar código'}
                 </Text>
@@ -418,29 +463,40 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 onPress={handleBackToLogin}
                 style={styles.backToLoginContainer}
               >
-                <Text style={styles.backToLoginText}>Volver al inicio de sesión</Text>
+                <Text style={styles.backToLoginText}>
+                  Volver al inicio de sesión
+                </Text>
               </TouchableOpacity>
             </View>
           ) : screenMode === 'verify-code' ? (
             <View style={styles.formCard}>
               <Text style={styles.formTitle}>Recuperar contraseña</Text>
               <Text style={styles.recoveryHighlightText}>
-                Se envió un código al correo registrado. Introdúcelo a continuación.
+                Se envió un código al correo registrado. Introdúcelo a
+                continuación.
               </Text>
 
               <View style={styles.recoveryNoticeRow}>
                 <Text style={styles.recoveryNoticeIcon}>⏰</Text>
-                <Text style={styles.recoveryNoticeText}>El código expira en 10 minutos</Text>
-                <Text style={styles.recoveryCountdown}>{formatRecoveryTime(recoveryTimeLeft)}</Text>
+                <Text style={styles.recoveryNoticeText}>
+                  El código expira en 10 minutos
+                </Text>
+                <Text style={styles.recoveryCountdown}>
+                  {formatRecoveryTime(recoveryTimeLeft)}
+                </Text>
               </View>
 
               <View style={styles.divider} />
 
-              <Text style={styles.codeLabel}>Ingresa el código (6 dígitos)</Text>
+              <Text style={styles.codeLabel}>
+                Ingresa el código (6 dígitos)
+              </Text>
               <TextInput
                 style={styles.codeInput}
                 value={recoveryCode}
-                onChangeText={value => setRecoveryCode(value.replace(/[^0-9]/g, '').slice(0, 6))}
+                onChangeText={value =>
+                  setRecoveryCode(value.replace(/[^0-9]/g, '').slice(0, 6))
+                }
                 keyboardType="number-pad"
                 placeholder="_  _  _  _  _  _"
                 placeholderTextColor="#7C7C7C"
@@ -453,13 +509,18 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               <TouchableOpacity
                 style={[
                   styles.loginButton,
-                  (isSubmitting || recoveryTimeLeft <= 0) && styles.loginButtonDisabled,
+                  (isSubmitting || recoveryTimeLeft <= 0) &&
+                    styles.loginButtonDisabled,
                 ]}
                 onPress={handleVerifyCode}
                 disabled={isSubmitting || recoveryTimeLeft <= 0}
               >
                 <Text style={styles.loginButtonText}>
-                  {isSubmitting ? 'Validando...' : recoveryTimeLeft <= 0 ? 'Código expirado' : 'Validar'}
+                  {isSubmitting
+                    ? 'Validando...'
+                    : recoveryTimeLeft <= 0
+                    ? 'Código expirado'
+                    : 'Validar'}
                 </Text>
               </TouchableOpacity>
 
@@ -467,7 +528,9 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 onPress={handleBackToLogin}
                 style={styles.backToLoginContainer}
               >
-                <Text style={styles.backToLoginText}>Volver al inicio de sesión</Text>
+                <Text style={styles.backToLoginText}>
+                  Volver al inicio de sesión
+                </Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -495,7 +558,9 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                   onPress={() => setShowNewPassword(prev => !prev)}
                   style={styles.eyeButton}
                 >
-                  <Text style={styles.eyeIcon}>{showNewPassword ? '🙈' : '👁'}</Text>
+                  <Text style={styles.eyeIcon}>
+                    {showNewPassword ? '🙈' : '👁'}
+                  </Text>
                 </TouchableOpacity>
               </View>
 
@@ -516,11 +581,16 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                   onPress={() => setShowConfirmPassword(prev => !prev)}
                   style={styles.eyeButton}
                 >
-                  <Text style={styles.eyeIcon}>{showConfirmPassword ? '🙈' : '👁'}</Text>
+                  <Text style={styles.eyeIcon}>
+                    {showConfirmPassword ? '🙈' : '👁'}
+                  </Text>
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity style={styles.loginButton} onPress={handleResetPassword}>
+              <TouchableOpacity
+                style={styles.loginButton}
+                onPress={handleResetPassword}
+              >
                 <Text style={styles.loginButtonText}>
                   {isSubmitting ? 'Guardando...' : 'Cambiar contraseña'}
                 </Text>
@@ -530,7 +600,9 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 onPress={handleBackToLogin}
                 style={styles.backToLoginContainer}
               >
-                <Text style={styles.backToLoginText}>Volver al inicio de sesión</Text>
+                <Text style={styles.backToLoginText}>
+                  Volver al inicio de sesión
+                </Text>
               </TouchableOpacity>
 
               <Text style={styles.recoverySuccessText}>

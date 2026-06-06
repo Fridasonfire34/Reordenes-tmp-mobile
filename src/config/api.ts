@@ -9,6 +9,7 @@ export const API_ENDPOINTS = {
   login: `${MOBILE_API_BASE}/signing/login`,
   recoveryBase: `${MOBILE_API_BASE}/signing/recover`,
   reorders: `${MOBILE_API_BASE}/reorders`,
+  reordersPendientes: `${MOBILE_API_BASE}/reordersPendientes`,
   rdms: `${MOBILE_API_BASE}/rdms`,
   newFolio: `${MOBILE_API_BASE}/nuevoFolioReorden`,
   lineas: `${MOBILE_API_BASE}/getLineas`,

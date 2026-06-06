@@ -1,0 +1,16 @@
+[Fri 06/05/2026 16:56:46.68] Iniciando bridge-rdm 
+[Fri 06/05/2026 17:14:17.81] Iniciando bridge-rdm 
+RDM bridge activo en http://localhost:3011
+Impresora predeterminada: DYMO LABELWRITER 550
+Preset por defecto: 100x212
+Bridge: DYMO Sin Nombre
+EXE_DIR: C:\Users\FridaGutierrez\Desktop\rdm app\bridge-rdm\dist
+.env existe en EXE_DIR: true
+process.env.BRIDGE_NAME (raw): undefined
+.env contenido:
+PORT=3011
+DYMO_PRINTER_NAME=DYMO LABELWRITER 550
+DYMO_LABEL_PRESET=100x212
+
+^C[Fri 06/05/2026 17:15:36.89] Iniciando bridge-rdm 
+[Sat 06/06/2026  6:16:28.93] Iniciando bridge-rdm 
