@@ -12,11 +12,13 @@ import {
 } from 'react-native';
 import { Asset, launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import { API_ENDPOINTS } from '../config/api';
+import { type RdmSavePayload } from './RDMsScreen';
 
 type FotosRDMScreenProps = {
   onBack: () => void;
   onSaved: () => void;
   folio: string;
+  rdmPayload: RdmSavePayload | null;
 };
 
 type RdmPhoto = {
@@ -27,7 +29,7 @@ type RdmPhoto = {
   fileSize: number;
 };
 
-export default function FotosRDMScreen({ onBack, onSaved, folio }: FotosRDMScreenProps) {
+export default function FotosRDMScreen({ onBack, onSaved, folio, rdmPayload }: FotosRDMScreenProps) {
   const [photos, setPhotos] = useState<RdmPhoto[]>([]);
   const [selectedPhoto, setSelectedPhoto] = useState<RdmPhoto | null>(null);
   const [isSavingPhotos, setIsSavingPhotos] = useState(false);
@@ -118,51 +120,92 @@ export default function FotosRDMScreen({ onBack, onSaved, folio }: FotosRDMScree
     }
 
     if (!folio.trim()) {
-      Alert.alert('Folio no disponible', 'No se puede guardar fotografias sin folio de RDM.');
+      Alert.alert('Folio no disponible', 'No se puede guardar sin folio de RDM.');
       return;
     }
 
-    const missingBinaryData = photos.some(photo => !photo.fileDataBase64);
-    if (missingBinaryData) {
-      Alert.alert('Foto incompleta', 'Una o mas fotografias no tienen datos binarios. Vuelve a capturarlas.');
+    if (!rdmPayload) {
+      Alert.alert('Error', 'No se encontraron los datos del RDM. Vuelve al formulario.');
+      return;
+    }
+
+    if (photos.some(p => !p.fileDataBase64)) {
+      Alert.alert('Foto incompleta', 'Una o mas fotografias no tienen datos. Vuelve a capturarlas.');
       return;
     }
 
     try {
       setIsSavingPhotos(true);
 
-      const response = await fetch(API_ENDPOINTS.saveRdmFotos, {
+      // 1. Guardar RDM en BD
+      const rdmResponse = await fetch(API_ENDPOINTS.saveRDM, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rdmPayload),
+      });
+
+      const rdmText = await rdmResponse.text();
+      let rdmData: Record<string, unknown> | null = null;
+      try { rdmData = rdmText ? (JSON.parse(rdmText) as Record<string, unknown>) : null; } catch { rdmData = null; }
+
+      if (!rdmResponse.ok) {
+        throw new Error(
+          (rdmData?.message as string | undefined) || rdmText || `Error ${rdmResponse.status} al guardar RDM.`,
+        );
+      }
+
+      // 2. Guardar fotografias
+      const fotosResponse = await fetch(API_ENDPOINTS.saveRdmFotos, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           folio: folio.trim(),
-          photos: photos.map(photo => ({
-            mimeType: photo.mimeType,
-            fileData: photo.fileDataBase64,
-            fileSize: photo.fileSize,
+          photos: photos.map(p => ({
+            mimeType: p.mimeType,
+            fileData: p.fileDataBase64,
+            fileSize: p.fileSize,
           })),
         }),
       });
 
-      const payload = await response.json().catch(() => null);
+      const fotosData = await fotosResponse.json().catch(() => null);
+      if (!fotosResponse.ok) {
+        const msg = fotosData && typeof fotosData === 'object' && typeof fotosData.message === 'string'
+          ? fotosData.message
+          : `Error ${fotosResponse.status} al guardar fotografias.`;
+        throw new Error(msg);
+      }
 
-      if (!response.ok) {
-        const message =
-          payload && typeof payload === 'object' && 'message' in payload && typeof payload.message === 'string'
-            ? payload.message
-            : 'No fue posible guardar las fotografias del RDM.';
-        throw new Error(message);
+      // 3. Generar reporte PDF (fotos ya guardadas en BD para que aparezcan en el reporte)
+      try {
+        const pdfResponse = await fetch(API_ENDPOINTS.generateRdmReport, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            folio: rdmPayload.folio,
+          }),
+        });
+
+        if (!pdfResponse.ok && pdfResponse.status !== 409) {
+          const pdfData = await pdfResponse.json().catch(() => null) as { message?: string } | null;
+          const msg = pdfData?.message ?? '';
+          if (!/existe|existente|duplicado|duplicate/i.test(msg)) {
+            Alert.alert('Advertencia', `RDM guardado, pero no se genero el PDF: ${msg || `Error ${pdfResponse.status}`}`);
+          }
+        }
+      } catch {
+        Alert.alert('Advertencia', 'RDM guardado, pero no fue posible generar el PDF.');
       }
 
       Alert.alert(
         'Guardado',
-        `Se guardaron ${photos.length} fotografias del folio ${folio || 'N/A'}.`,
+        `RDM ${folio} guardado.`,
         [{ text: 'OK', onPress: onSaved }],
       );
     } catch (error) {
       Alert.alert(
         'Error al guardar',
-        error instanceof Error ? error.message : 'No fue posible guardar las fotografias del RDM.',
+        error instanceof Error ? error.message : 'No fue posible guardar el RDM.',
       );
     } finally {
       setIsSavingPhotos(false);
@@ -254,7 +297,7 @@ export default function FotosRDMScreen({ onBack, onSaved, folio }: FotosRDMScree
             disabled={photos.length === 0 || isSavingPhotos}
           >
             <Text style={styles.saveButtonText}>
-              {isSavingPhotos ? 'Guardando fotografias...' : `Guardar Fotografias (${photos.length})`}
+              {isSavingPhotos ? 'Guardando...' : `Guardar RDM (${photos.length} ${photos.length === 1 ? 'foto' : 'fotos'})`}
             </Text>
           </TouchableOpacity>
         </View>

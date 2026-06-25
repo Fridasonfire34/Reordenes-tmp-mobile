@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   Modal,
   SafeAreaView,
   ScrollView,
@@ -17,7 +18,7 @@ type RDMsScreenProps = {
   onBack: () => void;
   loggedUser: string;
   loggedNomina: string;
-  onGoToFotosRDM: (folio: string) => void;
+  onGoToFotosRDM: (folio: string, payload: RdmSavePayload) => void;
   initialDraft: RdmDraft | null;
   onDraftChange: (draft: RdmDraft) => void;
 };
@@ -49,6 +50,24 @@ export type RdmDraft = {
   form: FormState;
 };
 
+export type RdmSavePayload = {
+  folio: string;
+  auditor: string;
+  fecha: string;
+  codigoMaterial: string;
+  descripcion: string;
+  material: string;
+  numeroTag: string;
+  proveedor: string;
+  cantidad: string;
+  unidad: string;
+  rechazo: string;
+  disposicion: string;
+  status: string;
+  aplicacionDesviacion: string;
+  captureDateTime: string;
+};
+
 const formatCurrentDateTime = (): string => {
   const now = new Date();
   const day = `${now.getDate()}`.padStart(2, '0');
@@ -64,7 +83,6 @@ const formatCurrentDateTime = (): string => {
   return `${day}/${month}/${year} ${hours}:${minutes} ${amPm}`;
 };
 
-const SAVE_RDM_URL = API_ENDPOINTS.saveRDM;
 const RDM_ROLLOS_MATL_URL = API_ENDPOINTS.rdmRollosMatl;
 const OTHER_OPTION = 'Otro';
 
@@ -136,11 +154,11 @@ export default function RDMsScreen({
   const [showProveedorPicker, setShowProveedorPicker] = useState(false);
   const [showDescripcionPicker, setShowDescripcionPicker] = useState(false);
   const [showDisposicionPicker, setShowDisposicionPicker] = useState(false);
-  const [showPhotoOrSaveModal, setShowPhotoOrSaveModal] = useState(false);
-  const [isSavingRdm, setIsSavingRdm] = useState(false);
   const [isCodigoMaterialManual, setIsCodigoMaterialManual] = useState(false);
   const [isDescripcionManual, setIsDescripcionManual] = useState(false);
   const [isProveedorManual, setIsProveedorManual] = useState(false);
+  const [keyboardPadding, setKeyboardPadding] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [form, setForm] = useState<FormState>(() => {
     if (initialDraft?.form) {
@@ -171,9 +189,6 @@ export default function RDMsScreen({
 
   const codigoMaterialOptions = Array.from(new Set(materialCatalog.map(item => item.codigo)));
   const descripcionOptions = Array.from(new Set(materialCatalog.map(item => item.descripcion)));
-  const codigoMaterialPickerOptions = [...codigoMaterialOptions, OTHER_OPTION];
-  const descripcionPickerOptions = [...descripcionOptions, OTHER_OPTION];
-  const proveedorPickerOptions = [...proveedorOptions, OTHER_OPTION];
 
   const handleSelectCodigoMaterial = (codigo: string) => {
     if (codigo === OTHER_OPTION) {
@@ -234,7 +249,7 @@ export default function RDMsScreen({
     .map(field => field.label);
 
   const isMainActionDisabled =
-    isLoadingFolio || isSavingRdm || !form.folio.trim() || missingRequiredFields.length > 0;
+    isLoadingFolio || !form.folio.trim() || missingRequiredFields.length > 0;
 
   useEffect(() => {
     setForm(prev => ({ ...prev, auditor: loggedNomina || loggedUser || 'Usuario' }));
@@ -380,79 +395,35 @@ export default function RDMsScreen({
     void fetchProveedores();
   }, []);
 
-  const generateAndStorePdfForRdm = async (pdfInput: {
-    folio: string;
-    auditor: string;
-    fecha: string;
-    codigoMaterial: string;
-    descripcion: string;
-    numeroTag: string;
-    proveedor: string;
-    cantidad: string;
-    unidad: string;
-    rechazo: string;
-    disposicion: string;
-    status: string;
-    salidaFecha: string;
-  }): Promise<'saved' | 'exists'> => {
-    const rawFolio = (pdfInput.folio || '').trim();
-    if (!rawFolio) {
-      throw new Error('No se encontro el folio para generar el PDF.');
-    }
-
-    const generateResponse = await fetch(API_ENDPOINTS.generateRdmReport, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        folio: rawFolio,
-        reportData: {
-          fecha: pdfInput.fecha,
-          auditor: pdfInput.auditor,
-          codigoMaterial: pdfInput.codigoMaterial,
-          descripcion: pdfInput.descripcion,
-          numeroTag: pdfInput.numeroTag,
-          proveedor: pdfInput.proveedor,
-          cantidad: pdfInput.cantidad,
-          unidad: pdfInput.unidad,
-          rechazo: pdfInput.rechazo,
-          disposicion: pdfInput.disposicion,
-          status: pdfInput.status,
-          salidaFecha: pdfInput.salidaFecha,
-        },
-      }),
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', e => {
+      setKeyboardPadding(e.endCoordinates.height);
     });
+    const hide = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardPadding(0);
+    });
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
-    if (generateResponse.ok) {
-      return 'saved';
-    }
-
-    if (generateResponse.status === 409) {
-      return 'exists';
-    }
-
-    const generatePayload = await generateResponse.json().catch(() => null) as { message?: string } | null;
-    const message = generatePayload?.message || `Error ${generateResponse.status} al generar reporte en backend.`;
-
-    if (/existe|existente|duplicado|duplicate/i.test(message)) {
-      return 'exists';
-    }
-
-    throw new Error(message);
-  };
-
-  const saveRdm = async (showSuccessAlert: boolean): Promise<boolean> => {
-    if (isSavingRdm) {
-      return false;
+  const handleAgregarFotosAction = () => {
+    if (missingRequiredFields.length > 0) {
+      Alert.alert(
+        'Campos requeridos',
+        `Completa los siguientes campos: ${missingRequiredFields.join(', ')}.`,
+      );
+      return;
     }
 
     const sqlFecha = toSqlDateTimeFromDisplay(form.fecha);
-
     if (!sqlFecha) {
-      Alert.alert('Fecha invalida', 'No se pudo convertir la fecha del RDM a un formato valido para guardarlo.');
-      return false;
+      Alert.alert('Fecha invalida', 'No se pudo convertir la fecha del RDM.');
+      return;
     }
 
-    const payload = {
+    const payload: RdmSavePayload = {
       folio: form.folio,
       auditor: form.auditor,
       fecha: sqlFecha,
@@ -466,108 +437,11 @@ export default function RDMsScreen({
       rechazo: form.rechazo,
       disposicion: form.disposicion,
       status: form.status,
-      aplicacionDesviacion: form.aplicacionDesviacion,
-      salidaFecha: '',
-      wfloRm: '',
-      nc: '',
+      aplicacionDesviacion: toSqlDateTimeFromDisplay(form.aplicacionDesviacion) ?? '',
       captureDateTime: sqlFecha,
     };
 
-    try {
-      setIsSavingRdm(true);
-
-      const response = await fetch(SAVE_RDM_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const rawText = await response.text();
-      let data: Record<string, unknown> | null = null;
-
-      try {
-        data = rawText ? (JSON.parse(rawText) as Record<string, unknown>) : null;
-      } catch {
-        data = null;
-      }
-
-      if (!response.ok) {
-        const serverMessage =
-          (data?.message as string | undefined) ||
-          rawText ||
-          `Error ${response.status} al guardar RDM.`;
-        throw new Error(serverMessage);
-      }
-
-      let pdfStatus: 'saved' | 'exists' = 'saved';
-      try {
-        pdfStatus = await generateAndStorePdfForRdm({
-          folio: payload.folio,
-          auditor: payload.auditor,
-          fecha: payload.fecha,
-          codigoMaterial: payload.codigoMaterial,
-          descripcion: payload.descripcion,
-          numeroTag: payload.numeroTag,
-          proveedor: payload.proveedor,
-          cantidad: payload.cantidad,
-          unidad: payload.unidad,
-          rechazo: payload.rechazo,
-          disposicion: payload.disposicion,
-          status: payload.status,
-          salidaFecha: payload.salidaFecha,
-        });
-      } catch (pdfError) {
-        Alert.alert(
-          'RDM guardado con advertencia',
-          pdfError instanceof Error
-            ? `El RDM se guardo, pero no fue posible guardar el PDF en BD: ${pdfError.message}`
-            : 'El RDM se guardo, pero no fue posible guardar el PDF en BD.',
-        );
-      }
-
-      if (showSuccessAlert) {
-        Alert.alert(
-          'Guardado',
-          pdfStatus === 'exists'
-            ? 'El RDM se guardo correctamente. El PDF ya existia para este folio y no se genero uno nuevo.'
-            : 'El RDM se guardo correctamente y el PDF se almaceno en la BD.',
-        );
-      }
-
-      return true;
-    } catch (error) {
-      Alert.alert(
-        'Error al guardar',
-        error instanceof Error ? error.message : 'No fue posible guardar el RDM.',
-      );
-      return false;
-    } finally {
-      setIsSavingRdm(false);
-    }
-  };
-
-  const handleGuardarAction = async () => {
-    setShowPhotoOrSaveModal(false);
-    await saveRdm(true);
-  };
-
-  const handleAnexarFotosAction = async () => {
-    setShowPhotoOrSaveModal(false);
-
-    if (missingRequiredFields.length > 0) {
-      Alert.alert(
-        'Campos requeridos',
-        `Para anexar fotografias completa: ${missingRequiredFields.join(', ')}.`,
-      );
-      return;
-    }
-
-    const saved = await saveRdm(false);
-    if (!saved) {
-      return;
-    }
-
-    onGoToFotosRDM(form.folio);
+    onGoToFotosRDM(form.folio, payload);
   };
 
   return (
@@ -583,7 +457,7 @@ export default function RDMsScreen({
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 28 + keyboardPadding }]} keyboardShouldPersistTaps="handled">
           <View style={styles.formCard}>
             <View style={styles.row2}>
               <View style={styles.halfField}>
@@ -676,12 +550,13 @@ export default function RDMsScreen({
 
             <View style={styles.row2}>
               <View style={styles.halfField}>
-                <Text style={styles.fieldLabel}>No. Tag</Text>
+                <Text style={styles.fieldLabel}>No. Tag <Text style={styles.requiredMark}>*</Text></Text>
                 <TextInput
                   style={styles.input}
                   value={form.numeroTag}
                   onChangeText={text => updateField('numeroTag', text)}
                   editable={!isLoadingFolio}
+                  placeholder="Requerido"
                   placeholderTextColor="#9AA6B2"
                 />
               </View>
@@ -804,10 +679,10 @@ export default function RDMsScreen({
           <TouchableOpacity
             style={[styles.addPhotosButton, isMainActionDisabled ? styles.addPhotosButtonDisabled : null]}
             activeOpacity={0.85}
-            onPress={() => setShowPhotoOrSaveModal(true)}
+            onPress={handleAgregarFotosAction}
             disabled={isMainActionDisabled}
           >
-            <Text style={styles.addPhotosButtonText}>Agregar fotografias o Guardar RDM</Text>
+            <Text style={styles.addPhotosButtonText}>Agregar Fotografias</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -816,19 +691,33 @@ export default function RDMsScreen({
         visible={showCodigoMaterialPicker}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowCodigoMaterialPicker(false)}
+        onRequestClose={() => { setShowCodigoMaterialPicker(false); setSearchQuery(''); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Selecciona codigo de material</Text>
 
+            <TextInput
+              style={styles.modalSearchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Buscar codigo..."
+              placeholderTextColor="#9AA6B2"
+              autoFocus
+            />
+
             <ScrollView style={styles.modalList} keyboardShouldPersistTaps="handled">
-              {codigoMaterialPickerOptions.map(option => (
+              {[
+                ...codigoMaterialOptions.filter(o =>
+                  o.toLowerCase().includes(searchQuery.toLowerCase())
+                ),
+                OTHER_OPTION,
+              ].map(option => (
                 <TouchableOpacity
                   key={option}
                   style={styles.modalOption}
                   activeOpacity={0.8}
-                  onPress={() => handleSelectCodigoMaterial(option)}
+                  onPress={() => { handleSelectCodigoMaterial(option); setSearchQuery(''); }}
                 >
                   <Text style={styles.modalOptionText}>{option}</Text>
                 </TouchableOpacity>
@@ -838,7 +727,7 @@ export default function RDMsScreen({
             <TouchableOpacity
               style={styles.modalCancelButton}
               activeOpacity={0.8}
-              onPress={() => setShowCodigoMaterialPicker(false)}
+              onPress={() => { setShowCodigoMaterialPicker(false); setSearchQuery(''); }}
             >
               <Text style={styles.modalCancelText}>Cancelar</Text>
             </TouchableOpacity>
@@ -850,19 +739,33 @@ export default function RDMsScreen({
         visible={showProveedorPicker}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowProveedorPicker(false)}
+        onRequestClose={() => { setShowProveedorPicker(false); setSearchQuery(''); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Selecciona proveedor</Text>
 
+            <TextInput
+              style={styles.modalSearchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Buscar proveedor..."
+              placeholderTextColor="#9AA6B2"
+              autoFocus
+            />
+
             <ScrollView style={styles.modalList} keyboardShouldPersistTaps="handled">
-              {proveedorPickerOptions.map(option => (
+              {[
+                ...proveedorOptions.filter((o: string) =>
+                  o.toLowerCase().includes(searchQuery.toLowerCase())
+                ),
+                OTHER_OPTION,
+              ].map(option => (
                 <TouchableOpacity
                   key={option}
                   style={styles.modalOption}
                   activeOpacity={0.8}
-                  onPress={() => handleSelectProveedor(option)}
+                  onPress={() => { handleSelectProveedor(option); setSearchQuery(''); }}
                 >
                   <Text style={styles.modalOptionText}>{option}</Text>
                 </TouchableOpacity>
@@ -872,7 +775,7 @@ export default function RDMsScreen({
             <TouchableOpacity
               style={styles.modalCancelButton}
               activeOpacity={0.8}
-              onPress={() => setShowProveedorPicker(false)}
+              onPress={() => { setShowProveedorPicker(false); setSearchQuery(''); }}
             >
               <Text style={styles.modalCancelText}>Cancelar</Text>
             </TouchableOpacity>
@@ -884,19 +787,33 @@ export default function RDMsScreen({
         visible={showDescripcionPicker}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowDescripcionPicker(false)}
+        onRequestClose={() => { setShowDescripcionPicker(false); setSearchQuery(''); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Selecciona descripcion</Text>
 
+            <TextInput
+              style={styles.modalSearchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Buscar descripcion..."
+              placeholderTextColor="#9AA6B2"
+              autoFocus
+            />
+
             <ScrollView style={styles.modalList} keyboardShouldPersistTaps="handled">
-              {descripcionPickerOptions.map(option => (
+              {[
+                ...descripcionOptions.filter((o: string) =>
+                  o.toLowerCase().includes(searchQuery.toLowerCase())
+                ),
+                OTHER_OPTION,
+              ].map(option => (
                 <TouchableOpacity
                   key={option}
                   style={styles.modalOption}
                   activeOpacity={0.8}
-                  onPress={() => handleSelectDescripcion(option)}
+                  onPress={() => { handleSelectDescripcion(option); setSearchQuery(''); }}
                 >
                   <Text style={styles.modalOptionText}>{option}</Text>
                 </TouchableOpacity>
@@ -906,7 +823,7 @@ export default function RDMsScreen({
             <TouchableOpacity
               style={styles.modalCancelButton}
               activeOpacity={0.8}
-              onPress={() => setShowDescripcionPicker(false)}
+              onPress={() => { setShowDescripcionPicker(false); setSearchQuery(''); }}
             >
               <Text style={styles.modalCancelText}>Cancelar</Text>
             </TouchableOpacity>
@@ -951,39 +868,6 @@ export default function RDMsScreen({
         </View>
       </Modal>
 
-      <Modal
-        visible={showPhotoOrSaveModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowPhotoOrSaveModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.actionModalCard}>
-            <Text style={styles.modalTitle}>Confirmar acción</Text>
-            <Text style={styles.actionModalText}>¿Deseas guardar o anexar fotografías?</Text>
-
-            <TouchableOpacity style={styles.actionPrimaryButton} activeOpacity={0.85} onPress={handleGuardarAction}>
-              <Text style={styles.actionPrimaryButtonText}>{isSavingRdm ? 'Guardando...' : 'Guardar'}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionSecondaryButton}
-              activeOpacity={0.85}
-              onPress={handleAnexarFotosAction}
-            >
-              <Text style={styles.actionSecondaryButtonText}>Anexar fotografias</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.modalCancelButton}
-              activeOpacity={0.8}
-              onPress={() => setShowPhotoOrSaveModal(false)}
-            >
-              <Text style={styles.modalCancelText}>Cancelar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -1027,7 +911,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   scrollContent: {
-    paddingBottom: 28,
+    paddingBottom: 0,
   },
   title: {
     fontSize: 26,
@@ -1238,5 +1122,20 @@ const styles = StyleSheet.create({
     color: '#1A49D8',
     fontSize: 14,
     fontWeight: '700',
+  },
+  requiredMark: {
+    color: '#E53E3E',
+    fontWeight: '700',
+  },
+  modalSearchInput: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#D8E0EB',
+    borderRadius: 10,
+    height: 40,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: '#102033',
+    marginBottom: 10,
   },
 });

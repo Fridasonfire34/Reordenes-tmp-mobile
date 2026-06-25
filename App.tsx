@@ -4,7 +4,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import MenuScreen from './src/screens/MenuScreen';
 import NuevaReordenScreen from './src/screens/NuevaReordenScreen';
 import ConsultarReordenesScreen from './src/screens/ConsultarReordenesScreen';
-import RDMsScreen, { type RdmDraft } from './src/screens/RDMsScreen';
+import RDMsScreen, { type RdmDraft, type RdmSavePayload } from './src/screens/RDMsScreen';
 import RDMsMenuScreen from './src/screens/RDMsMenuScreen';
 import ConsultarRDMsScreen from './src/screens/ConsultarRDMsScreen';
 import FotosRDMScreen from './src/screens/FotosRDMScreen';
@@ -58,6 +58,7 @@ function App() {
   const [loggedDept, setLoggedDept] = useState('');
   const [loggedTipo, setLoggedTipo] = useState('');
   const [rdmFolioForPhotos, setRdmFolioForPhotos] = useState('');
+  const [rdmPayloadForPhotos, setRdmPayloadForPhotos] = useState<RdmSavePayload | null>(null);
   const [rdmDraft, setRdmDraft] = useState<RdmDraft | null>(null);
 
   useEffect(() => {
@@ -105,8 +106,9 @@ function App() {
           loggedNomina={loggedNomina}
           initialDraft={rdmDraft}
           onDraftChange={setRdmDraft}
-          onGoToFotosRDM={folio => {
+          onGoToFotosRDM={(folio, payload) => {
             setRdmFolioForPhotos(folio || '');
+            setRdmPayloadForPhotos(payload);
             setCurrentScreen('rdms-fotos');
           }}
         />
@@ -119,10 +121,12 @@ function App() {
       ) : currentScreen === 'rdms-fotos' ? (
         <FotosRDMScreen
           folio={rdmFolioForPhotos}
+          rdmPayload={rdmPayloadForPhotos}
           onBack={() => setCurrentScreen('rdms-new')}
           onSaved={() => {
             setRdmDraft(null);
             setRdmFolioForPhotos('');
+            setRdmPayloadForPhotos(null);
             setCurrentScreen('rdms-menu');
           }}
         />
