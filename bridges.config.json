@@ -14,13 +14,12 @@
       "location": "192.168.16.246",
       "description": "Impresora para piezas metalicas"
     },
-     {
+    {
       "id": "calidad",
       "name": "DYMO LabelWriter 550 Calidad",
       "port": 3013,
-      "location": "192.168.16.224",
+      "location": "192.168.16.146",
       "description": "Impresora para calidad"
     }
-
   ]
 }
