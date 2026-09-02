@@ -46,6 +46,14 @@ type MaterialCatalogItem = {
   descripcion: string;
 };
 
+type MaterialItem = {
+  key: string;
+  codigo: string;
+  descripcion: string;
+  cantidad: string;
+  tag: string;
+};
+
 export type RdmDraft = {
   form: FormState;
 };
@@ -85,6 +93,59 @@ const formatCurrentDateTime = (): string => {
 
 const RDM_ROLLOS_MATL_URL = API_ENDPOINTS.rdmRollosMatl;
 const OTHER_OPTION = 'Otro';
+
+const splitValues = (value: string): string[] => {
+  if (!value) {
+    return [];
+  }
+
+  return value.split(',').map(v => v.trim());
+};
+
+const joinValues = (items: string[]): string => items.filter(v => v.length > 0).join(', ');
+
+let materialItemKeyCounter = 0;
+const createMaterialItemKey = (): string => {
+  materialItemKeyCounter += 1;
+  return `item-${Date.now()}-${materialItemKeyCounter}`;
+};
+
+const createEmptyMaterialItem = (): MaterialItem => ({
+  key: createMaterialItemKey(),
+  codigo: '',
+  descripcion: '',
+  cantidad: '',
+  tag: '',
+});
+
+const buildInitialMaterialItems = (form?: FormState | null): MaterialItem[] => {
+  if (!form) {
+    return [createEmptyMaterialItem()];
+  }
+
+  const codigos = splitValues(form.codigoMaterial);
+  const descripciones = splitValues(form.material);
+  const cantidades = splitValues(form.cantidad);
+  const tags = splitValues(form.numeroTag);
+  const length = Math.max(codigos.length, descripciones.length, cantidades.length, tags.length);
+
+  if (length === 0) {
+    return [createEmptyMaterialItem()];
+  }
+
+  const items: MaterialItem[] = [];
+  for (let index = 0; index < length; index += 1) {
+    items.push({
+      key: createMaterialItemKey(),
+      codigo: codigos[index] ?? '',
+      descripcion: descripciones[index] ?? '',
+      cantidad: cantidades[index] ?? '',
+      tag: tags[index] ?? '',
+    });
+  }
+
+  return items;
+};
 
 const getStringFromKeys = (source: Record<string, unknown>, keys: string[]): string => {
   for (const key of keys) {
@@ -152,13 +213,12 @@ export default function RDMsScreen({
   const [proveedorOptions, setProveedorOptions] = useState<string[]>([]);
   const [showCodigoMaterialPicker, setShowCodigoMaterialPicker] = useState(false);
   const [showProveedorPicker, setShowProveedorPicker] = useState(false);
-  const [showDescripcionPicker, setShowDescripcionPicker] = useState(false);
   const [showDisposicionPicker, setShowDisposicionPicker] = useState(false);
-  const [isCodigoMaterialManual, setIsCodigoMaterialManual] = useState(false);
-  const [isDescripcionManual, setIsDescripcionManual] = useState(false);
   const [isProveedorManual, setIsProveedorManual] = useState(false);
   const [keyboardPadding, setKeyboardPadding] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const [manualCodigoInput, setManualCodigoInput] = useState('');
+  const [activeMaterialItemKey, setActiveMaterialItemKey] = useState<string | null>(null);
 
   const [form, setForm] = useState<FormState>(() => {
     if (initialDraft?.form) {
@@ -182,48 +242,70 @@ export default function RDMsScreen({
     };
   });
 
+  const [materialItems, setMaterialItems] = useState<MaterialItem[]>(() =>
+    buildInitialMaterialItems(initialDraft?.form ?? null),
+  );
+
   const updateField = (key: FormKey, value: string) => {
-    const normalizedValue = key === 'cantidad' ? value.replace(/\D/g, '') : value;
-    setForm(prev => ({ ...prev, [key]: normalizedValue }));
+    setForm(prev => ({ ...prev, [key]: value }));
   };
 
   const codigoMaterialOptions = Array.from(new Set(materialCatalog.map(item => item.codigo)));
-  const descripcionOptions = Array.from(new Set(materialCatalog.map(item => item.descripcion)));
 
-  const handleSelectCodigoMaterial = (codigo: string) => {
-    if (codigo === OTHER_OPTION) {
-      setIsCodigoMaterialManual(true);
-      setForm(prev => ({ ...prev, codigoMaterial: '' }));
-      setShowCodigoMaterialPicker(false);
-      return;
-    }
-
-    setIsCodigoMaterialManual(false);
-    const match = materialCatalog.find(item => item.codigo === codigo);
-    setForm(prev => ({
-      ...prev,
-      codigoMaterial: codigo,
-      material: match ? match.descripcion : prev.material,
-    }));
-    setShowCodigoMaterialPicker(false);
+  const updateMaterialItem = (key: string, field: 'codigo' | 'descripcion' | 'cantidad' | 'tag', value: string) => {
+    const normalizedValue = field === 'cantidad' ? value.replace(/\D/g, '') : value;
+    setMaterialItems(prev => prev.map(item => (item.key === key ? { ...item, [field]: normalizedValue } : item)));
   };
 
-  const handleSelectDescripcion = (descripcion: string) => {
-    if (descripcion === OTHER_OPTION) {
-      setIsDescripcionManual(true);
-      setForm(prev => ({ ...prev, material: '' }));
-      setShowDescripcionPicker(false);
+  const addMaterialItem = () => {
+    setMaterialItems(prev => [...prev, createEmptyMaterialItem()]);
+  };
+
+  const removeMaterialItem = (key: string) => {
+    setMaterialItems(prev => {
+      if (prev.length <= 1) {
+        return prev.map(item => (item.key === key ? { ...item, codigo: '', descripcion: '', cantidad: '', tag: '' } : item));
+      }
+      return prev.filter(item => item.key !== key);
+    });
+  };
+
+  const openCodigoPickerForItem = (key: string) => {
+    setActiveMaterialItemKey(key);
+    setShowCodigoMaterialPicker(true);
+  };
+
+  const closeCodigoPicker = () => {
+    setShowCodigoMaterialPicker(false);
+    setActiveMaterialItemKey(null);
+    setSearchQuery('');
+    setManualCodigoInput('');
+  };
+
+  const handleSelectCodigoForActiveItem = (codigo: string) => {
+    if (!activeMaterialItemKey) {
       return;
     }
 
-    setIsDescripcionManual(false);
-    const match = materialCatalog.find(item => item.descripcion === descripcion);
-    setForm(prev => ({
-      ...prev,
-      material: descripcion,
-      codigoMaterial: match ? match.codigo : prev.codigoMaterial,
-    }));
-    setShowDescripcionPicker(false);
+    const match = materialCatalog.find(item => item.codigo === codigo);
+    setMaterialItems(prev => prev.map(item => (
+      item.key === activeMaterialItemKey
+        ? { ...item, codigo, descripcion: match ? match.descripcion : item.descripcion }
+        : item
+    )));
+    closeCodigoPicker();
+  };
+
+  const handleManualCodigoSubmit = () => {
+    const value = manualCodigoInput.trim();
+    if (!value || !activeMaterialItemKey) {
+      return;
+    }
+
+    setMaterialItems(prev => prev.map(item => (
+      item.key === activeMaterialItemKey ? { ...item, codigo: value } : item
+    )));
+    closeCodigoPicker();
   };
 
   const handleSelectProveedor = (proveedor: string) => {
@@ -239,10 +321,12 @@ export default function RDMsScreen({
     setShowProveedorPicker(false);
   };
 
+  const hasIncompleteMaterialRow = materialItems.some(
+    item => !item.codigo.trim() || !item.descripcion.trim() || !item.cantidad.trim() || !item.tag.trim(),
+  );
+
   const missingRequiredFields = [
-    { label: 'Codigo de Material', value: form.codigoMaterial },
-    { label: 'Descripcion', value: form.material },
-    { label: 'No. Tag', value: form.numeroTag },
+    { label: 'Renglones de material (Codigo, Descripcion, Cantidad y No. Tag)', value: hasIncompleteMaterialRow ? '' : '1' },
     { label: 'Proveedor', value: form.proveedor },
   ]
     .filter(field => !field.value.trim())
@@ -254,6 +338,32 @@ export default function RDMsScreen({
   useEffect(() => {
     setForm(prev => ({ ...prev, auditor: loggedNomina || loggedUser || 'Usuario' }));
   }, [loggedNomina, loggedUser]);
+
+  useEffect(() => {
+    const codigoJoined = joinValues(materialItems.map(item => item.codigo));
+    const descripcionJoined = joinValues(materialItems.map(item => item.descripcion));
+    const cantidadJoined = joinValues(materialItems.map(item => item.cantidad));
+    const tagJoined = joinValues(materialItems.map(item => item.tag));
+
+    setForm(prev => {
+      if (
+        prev.codigoMaterial === codigoJoined
+        && prev.material === descripcionJoined
+        && prev.cantidad === cantidadJoined
+        && prev.numeroTag === tagJoined
+      ) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        codigoMaterial: codigoJoined,
+        material: descripcionJoined,
+        cantidad: cantidadJoined,
+        numeroTag: tagJoined,
+      };
+    });
+  }, [materialItems]);
 
   useEffect(() => {
     onDraftChange({
@@ -356,7 +466,7 @@ export default function RDMsScreen({
         });
 
         const payload = await response.json().catch(() => null);
- 
+
         if (!response.ok) {
           const message =
             payload && typeof payload === 'object' && 'message' in payload && typeof payload.message === 'string'
@@ -423,16 +533,21 @@ export default function RDMsScreen({
       return;
     }
 
+    const codigoMaterial = joinValues(materialItems.map(item => item.codigo));
+    const descripcion = joinValues(materialItems.map(item => item.descripcion));
+    const cantidad = joinValues(materialItems.map(item => item.cantidad));
+    const numeroTag = joinValues(materialItems.map(item => item.tag));
+
     const payload: RdmSavePayload = {
       folio: form.folio,
       auditor: form.auditor,
       fecha: sqlFecha,
-      codigoMaterial: form.codigoMaterial,
-      descripcion: form.material,
-      material: form.material,
-      numeroTag: form.numeroTag,
+      codigoMaterial,
+      descripcion,
+      material: descripcion,
+      numeroTag,
       proveedor: form.proveedor,
-      cantidad: form.cantidad,
+      cantidad,
       unidad: form.unidad,
       rechazo: form.rechazo,
       disposicion: form.disposicion,
@@ -443,6 +558,8 @@ export default function RDMsScreen({
 
     onGoToFotosRDM(form.folio, payload);
   };
+
+  const activeMaterialItem = materialItems.find(item => item.key === activeMaterialItemKey) ?? null;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -484,85 +601,7 @@ export default function RDMsScreen({
               </View>
 
               <View style={styles.halfField}>
-                <Text style={styles.fieldLabel}>Codigo de material</Text>
-                <TouchableOpacity
-                  style={styles.input}
-                  onPress={() => setShowCodigoMaterialPicker(true)}
-                  activeOpacity={0.8}
-                  disabled={isLoadingFolio || isLoadingMaterialCatalog}
-                >
-                  <View style={styles.selectRow}>
-                    <Text style={(form.codigoMaterial || isCodigoMaterialManual) ? styles.selectText : styles.selectPlaceholderText}>
-                      {isCodigoMaterialManual
-                        ? OTHER_OPTION
-                        : (form.codigoMaterial || (isLoadingMaterialCatalog ? 'Cargando codigos...' : 'Selecciona codigo'))}
-                    </Text>
-                    <Text style={styles.selectArrow}>▾</Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {isCodigoMaterialManual ? (
-              <View style={styles.fieldBlock}>
-                <TextInput
-                  style={[styles.input, styles.manualInput]}
-                  value={form.codigoMaterial}
-                  onChangeText={text => updateField('codigoMaterial', text)}
-                  editable={!isLoadingFolio}
-                  placeholder="Escribe el codigo manual"
-                  placeholderTextColor="#9AA6B2"
-                />
-              </View>
-            ) : null}
-
-            <View style={styles.fieldBlock}>
-              <Text style={styles.fieldLabel}>Descripcion</Text>
-              <TouchableOpacity
-                style={[styles.input, styles.inputMultiline]}
-                onPress={() => setShowDescripcionPicker(true)}
-                activeOpacity={0.8}
-                disabled={isLoadingFolio || isLoadingMaterialCatalog}
-              >
-                <View style={styles.selectRow}>
-                  <Text style={(form.material || isDescripcionManual) ? styles.selectText : styles.selectPlaceholderText}>
-                    {isDescripcionManual
-                      ? OTHER_OPTION
-                      : (form.material || (isLoadingMaterialCatalog ? 'Cargando descripciones...' : 'Selecciona descripcion'))}
-                  </Text>
-                  <Text style={styles.selectArrow}>▾</Text>
-                </View>
-              </TouchableOpacity>
-              {isDescripcionManual ? (
-                <TextInput
-                  style={[styles.input, styles.inputMultiline, styles.manualInput]}
-                  value={form.material}
-                  onChangeText={text => updateField('material', text)}
-                  editable={!isLoadingFolio}
-                  multiline
-                  numberOfLines={3}
-                  textAlignVertical="top"
-                  placeholder="Escribe la descripcion manual"
-                  placeholderTextColor="#9AA6B2"
-                />
-              ) : null}
-            </View>
-
-            <View style={styles.row2}>
-              <View style={styles.halfField}>
-                <Text style={styles.fieldLabel}>No. Tag <Text style={styles.requiredMark}>*</Text></Text>
-                <TextInput
-                  style={styles.input}
-                  value={form.numeroTag}
-                  onChangeText={text => updateField('numeroTag', text)}
-                  editable={!isLoadingFolio}
-                  placeholder="Requerido"
-                  placeholderTextColor="#9AA6B2"
-                />
-              </View>
-
-              <View style={styles.halfField}>
-                <Text style={styles.fieldLabel}>Proveedor</Text>
+                <Text style={styles.fieldLabel}>Proveedor <Text style={styles.requiredMark}>*</Text></Text>
                 <TouchableOpacity
                   style={styles.input}
                   onPress={() => setShowProveedorPicker(true)}
@@ -592,29 +631,100 @@ export default function RDMsScreen({
               </View>
             ) : null}
 
-            <View style={styles.row2}>
-              <View style={styles.halfField}>
-                <Text style={styles.fieldLabel}>Cantidad</Text>
-                <TextInput
-                  style={styles.input}
-                  value={form.cantidad}
-                  onChangeText={text => updateField('cantidad', text)}
-                  editable={!isLoadingFolio}
-                  keyboardType="numeric"
-                  placeholderTextColor="#9AA6B2"
-                />
-              </View>
+            <View style={styles.materialItemsSection}>
+              <Text style={styles.fieldLabel}>Materiales <Text style={styles.requiredMark}>*</Text></Text>
+              <Text style={styles.sectionHint}>Codigo, descripcion, cantidad y tag van juntos por cada material.</Text>
 
-              <View style={styles.halfField}>
-                <Text style={styles.fieldLabel}>Unidad</Text>
-                <TextInput
-                  style={styles.input}
-                  value={form.unidad}
-                  onChangeText={text => updateField('unidad', text)}
-                  editable={!isLoadingFolio}
-                  placeholderTextColor="#9AA6B2"
-                />
-              </View>
+              {materialItems.map((item, index) => (
+                <View key={item.key} style={styles.materialItemCard}>
+                  <View style={styles.materialItemHeaderRow}>
+                    <Text style={styles.materialItemIndex}>Material {index + 1}</Text>
+                    {materialItems.length > 1 ? (
+                      <TouchableOpacity
+                        onPress={() => removeMaterialItem(item.key)}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <Text style={styles.materialItemRemove}>Quitar</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+
+                  <Text style={styles.materialItemFieldLabel}>Codigo de material</Text>
+                  <TouchableOpacity
+                    style={styles.input}
+                    onPress={() => openCodigoPickerForItem(item.key)}
+                    activeOpacity={0.8}
+                    disabled={isLoadingFolio || isLoadingMaterialCatalog}
+                  >
+                    <View style={styles.selectRow}>
+                      <Text style={item.codigo ? styles.selectText : styles.selectPlaceholderText}>
+                        {item.codigo || (isLoadingMaterialCatalog ? 'Cargando codigos...' : 'Selecciona codigo')}
+                      </Text>
+                      <Text style={styles.selectArrow}>▾</Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <Text style={styles.materialItemFieldLabel}>Descripcion</Text>
+                  <TextInput
+                    style={[styles.input, styles.inputMultiline]}
+                    value={item.descripcion}
+                    onChangeText={text => updateMaterialItem(item.key, 'descripcion', text)}
+                    editable={!isLoadingFolio}
+                    multiline
+                    numberOfLines={2}
+                    textAlignVertical="top"
+                    placeholder="Descripcion del material"
+                    placeholderTextColor="#9AA6B2"
+                  />
+
+                  <View style={styles.row2}>
+                    <View style={styles.halfField}>
+                      <Text style={styles.materialItemFieldLabel}>Cantidad</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={item.cantidad}
+                        onChangeText={text => updateMaterialItem(item.key, 'cantidad', text)}
+                        editable={!isLoadingFolio}
+                        keyboardType="numeric"
+                        placeholder="0"
+                        placeholderTextColor="#9AA6B2"
+                      />
+                    </View>
+
+                    <View style={styles.halfField}>
+                      <Text style={styles.materialItemFieldLabel}>No. Tag</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={item.tag}
+                        onChangeText={text => updateMaterialItem(item.key, 'tag', text)}
+                        editable={!isLoadingFolio}
+                        placeholder="Tag"
+                        placeholderTextColor="#9AA6B2"
+                      />
+                    </View>
+                  </View>
+                </View>
+              ))}
+
+              <TouchableOpacity
+                style={styles.addMaterialButton}
+                activeOpacity={0.85}
+                onPress={addMaterialItem}
+                disabled={isLoadingFolio}
+              >
+                <Text style={styles.addMaterialButtonText}>+ Agregar material</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.fieldBlock}>
+              <Text style={styles.fieldLabel}>Unidad</Text>
+              <TextInput
+                style={styles.input}
+                value={form.unidad}
+                onChangeText={text => updateField('unidad', text)}
+                editable={!isLoadingFolio}
+                placeholderTextColor="#9AA6B2"
+              />
             </View>
 
             <View style={styles.fieldBlock}>
@@ -691,7 +801,7 @@ export default function RDMsScreen({
         visible={showCodigoMaterialPicker}
         transparent
         animationType="fade"
-        onRequestClose={() => { setShowCodigoMaterialPicker(false); setSearchQuery(''); }}
+        onRequestClose={closeCodigoPicker}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -707,29 +817,49 @@ export default function RDMsScreen({
             />
 
             <ScrollView style={styles.modalList} keyboardShouldPersistTaps="handled">
-              {[
-                ...codigoMaterialOptions.filter(o =>
-                  o.toLowerCase().includes(searchQuery.toLowerCase())
-                ),
-                OTHER_OPTION,
-              ].map(option => (
-                <TouchableOpacity
-                  key={option}
-                  style={styles.modalOption}
-                  activeOpacity={0.8}
-                  onPress={() => { handleSelectCodigoMaterial(option); setSearchQuery(''); }}
-                >
-                  <Text style={styles.modalOptionText}>{option}</Text>
-                </TouchableOpacity>
-              ))}
+              {codigoMaterialOptions
+                .filter(o => o.toLowerCase().includes(searchQuery.toLowerCase()))
+                .map(option => {
+                  const selected = activeMaterialItem?.codigo === option;
+                  return (
+                    <TouchableOpacity
+                      key={option}
+                      style={[styles.modalOption, selected ? styles.modalOptionSelected : null]}
+                      activeOpacity={0.8}
+                      onPress={() => handleSelectCodigoForActiveItem(option)}
+                    >
+                      <Text style={styles.modalOptionText}>{selected ? '✓ ' : ''}{option}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
             </ScrollView>
+
+            <View style={styles.addRow}>
+              <TextInput
+                style={[styles.input, styles.addRowInput]}
+                value={manualCodigoInput}
+                onChangeText={setManualCodigoInput}
+                onSubmitEditing={handleManualCodigoSubmit}
+                placeholder="Codigo manual"
+                placeholderTextColor="#9AA6B2"
+                returnKeyType="done"
+              />
+              <TouchableOpacity
+                style={[styles.addRowButton, !manualCodigoInput.trim() ? styles.addRowButtonDisabled : null]}
+                activeOpacity={0.8}
+                disabled={!manualCodigoInput.trim()}
+                onPress={handleManualCodigoSubmit}
+              >
+                <Text style={styles.addRowButtonText}>+</Text>
+              </TouchableOpacity>
+            </View>
 
             <TouchableOpacity
               style={styles.modalCancelButton}
               activeOpacity={0.8}
-              onPress={() => { setShowCodigoMaterialPicker(false); setSearchQuery(''); }}
+              onPress={closeCodigoPicker}
             >
-              <Text style={styles.modalCancelText}>Cancelar</Text>
+              <Text style={styles.modalCancelText}>Cerrar</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -776,54 +906,6 @@ export default function RDMsScreen({
               style={styles.modalCancelButton}
               activeOpacity={0.8}
               onPress={() => { setShowProveedorPicker(false); setSearchQuery(''); }}
-            >
-              <Text style={styles.modalCancelText}>Cancelar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={showDescripcionPicker}
-        transparent
-        animationType="fade"
-        onRequestClose={() => { setShowDescripcionPicker(false); setSearchQuery(''); }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Selecciona descripcion</Text>
-
-            <TextInput
-              style={styles.modalSearchInput}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Buscar descripcion..."
-              placeholderTextColor="#9AA6B2"
-              autoFocus
-            />
-
-            <ScrollView style={styles.modalList} keyboardShouldPersistTaps="handled">
-              {[
-                ...descripcionOptions.filter((o: string) =>
-                  o.toLowerCase().includes(searchQuery.toLowerCase())
-                ),
-                OTHER_OPTION,
-              ].map(option => (
-                <TouchableOpacity
-                  key={option}
-                  style={styles.modalOption}
-                  activeOpacity={0.8}
-                  onPress={() => { handleSelectDescripcion(option); setSearchQuery(''); }}
-                >
-                  <Text style={styles.modalOptionText}>{option}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <TouchableOpacity
-              style={styles.modalCancelButton}
-              activeOpacity={0.8}
-              onPress={() => { setShowDescripcionPicker(false); setSearchQuery(''); }}
             >
               <Text style={styles.modalCancelText}>Cancelar</Text>
             </TouchableOpacity>
@@ -995,9 +1077,10 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   inputMultiline: {
-    minHeight: 82,
+    minHeight: 66,
     paddingTop: 10,
     height: 'auto',
+    marginBottom: 12,
   },
   inputMultilineLarge: {
     minHeight: 110,
@@ -1137,5 +1220,93 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#102033',
     marginBottom: 10,
+  },
+  modalHint: {
+    fontSize: 12,
+    color: '#64748B',
+    marginBottom: 10,
+    marginTop: -6,
+  },
+  modalOptionSelected: {
+    backgroundColor: '#EDF2FF',
+    borderColor: '#1A49D8',
+  },
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  addRowInput: {
+    flex: 1,
+  },
+  addRowButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#1A49D8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addRowButtonDisabled: {
+    backgroundColor: '#9AA6B2',
+  },
+  addRowButtonText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  materialItemsSection: {
+    marginBottom: 4,
+  },
+  sectionHint: {
+    fontSize: 12,
+    color: '#64748B',
+    marginBottom: 10,
+  },
+  materialItemCard: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#D8E0EB',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  materialItemHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  materialItemIndex: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1A49D8',
+  },
+  materialItemRemove: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#E53E3E',
+  },
+  materialItemFieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+    marginBottom: 4,
+  },
+  addMaterialButton: {
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#1A49D8',
+    backgroundColor: '#EDF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  addMaterialButtonText: {
+    color: '#1A49D8',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

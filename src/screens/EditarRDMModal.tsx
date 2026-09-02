@@ -439,28 +439,36 @@ export default function EditarRDMModal({ visible, onClose, rdmRow, loggedUser, l
 
             <View style={styles.fieldRow}>
               <Text style={styles.fieldLabel}>Código de Material</Text>
-              <TouchableOpacity
-                style={styles.dropdownButton}
-                onPress={() =>
-                  openPicker('Código de Material', codigoOptions, v => {
-                    const match = materialCatalog.find(i => i.codigo === v);
-                    setForm(prev => ({
-                      ...prev,
-                      codigoMaterial: v,
-                      descripcion: match ? match.descripcion : prev.descripcion,
-                    }));
-                  })
-                }
-                activeOpacity={0.85}
-              >
-                <Text
-                  style={form.codigoMaterial ? styles.dropdownValue : styles.dropdownPlaceholder}
-                  numberOfLines={1}
+              <Text style={styles.fieldHint}>Puedes escribir varios códigos separados por coma.</Text>
+              <View style={styles.fieldWithButtonRow}>
+                <TextInput
+                  style={[styles.fieldInput, styles.fieldInputFlex]}
+                  value={form.codigoMaterial}
+                  onChangeText={v => setField('codigoMaterial', v)}
+                  placeholder="Codigo(s) de material"
+                  placeholderTextColor="#94A3B8"
+                />
+                <TouchableOpacity
+                  style={styles.fieldPickerButton}
+                  activeOpacity={0.85}
+                  onPress={() =>
+                    openPicker('Código de Material', codigoOptions, v => {
+                      const match = materialCatalog.find(i => i.codigo === v);
+                      setForm(prev => {
+                        const existing = prev.codigoMaterial.split(',').map(s => s.trim()).filter(Boolean);
+                        const nextCodigos = existing.includes(v) ? existing : [...existing, v];
+                        return {
+                          ...prev,
+                          codigoMaterial: nextCodigos.join(', '),
+                          descripcion: prev.descripcion || (match ? match.descripcion : prev.descripcion),
+                        };
+                      });
+                    })
+                  }
                 >
-                  {form.codigoMaterial || 'Seleccionar código'}
-                </Text>
-                <Text style={styles.dropdownArrow}>▾</Text>
-              </TouchableOpacity>
+                  <Text style={styles.dropdownArrow}>▾</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.fieldRow}>
@@ -491,6 +499,7 @@ export default function EditarRDMModal({ visible, onClose, rdmRow, loggedUser, l
 
             <View style={styles.fieldRow}>
               <Text style={styles.fieldLabel}>No. Tag</Text>
+              <Text style={styles.fieldHint}>Puedes escribir varios tags separados por coma.</Text>
               <TextInput
                 style={styles.fieldInput}
                 value={form.numeroTag}
@@ -887,6 +896,29 @@ const styles = StyleSheet.create({
   fieldInputMultiline: {
     minHeight: 72,
     textAlignVertical: 'top',
+  },
+  fieldHint: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginBottom: 6,
+  },
+  fieldWithButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  fieldInputFlex: {
+    flex: 1,
+  },
+  fieldPickerButton: {
+    width: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E0',
+    borderRadius: 10,
   },
   dropdownButton: {
     flexDirection: 'row',
